@@ -101,29 +101,29 @@ export function recordInvoiceSettlement(
 ): InvoiceRecord {
   const invoices = getActiveInvoices();
   const existing = invoices.get(invoiceId);
-  if (existing) {
-    existing.status = provenance === "LIVE_ONCHAIN" ? "CONFIRMED" : "SIMULATED";
-    existing.paymentTxId = txId;
-    existing.provenance = provenance;
-    existing.verifiedAmountTinybars = amountTinybars || existing.amountTinybars;
-    existing.settledAt = Date.now();
-    return existing;
+  if (!existing) {
+    throw new Error("Cannot settle an unknown x402 invoice.");
   }
 
-  const record: InvoiceRecord = {
-    invoiceId,
-    amountTinybars: amountTinybars || "50000000",
-    displayAmount: "0.5 HBAR",
-    payee: process.env.HEDERA_OPERATOR_ID || "0.0.4491823",
-    createdAt: Date.now(),
-    status: provenance === "LIVE_ONCHAIN" ? "CONFIRMED" : "SIMULATED",
-    paymentTxId: txId,
-    provenance,
-    verifiedAmountTinybars: amountTinybars || "50000000",
-    settledAt: Date.now(),
-  };
-  invoices.set(invoiceId, record);
-  return record;
+  // A live receipt is the only evidence that can make an invoice CONFIRMED. In
+  // particular, never turn a client-supplied formatted transaction ID into a
+  // paid invoice merely because it looks like a Hedera transaction ID.
+  if (provenance === "LIVE_ONCHAIN" && !txId) {
+    throw new Error("A live x402 settlement requires a confirmed transaction ID.");
+  }
+  if (provenance === "SIMULATED" && txId) {
+    throw new Error("A simulated x402 settlement must not contain a transaction ID.");
+  }
+  if (amountTinybars && amountTinybars !== existing.amountTinybars) {
+    throw new Error("Settlement amount does not match the invoice amount.");
+  }
+
+  existing.status = provenance === "LIVE_ONCHAIN" ? "CONFIRMED" : "SIMULATED";
+  existing.paymentTxId = txId;
+  existing.provenance = provenance;
+  existing.verifiedAmountTinybars = existing.amountTinybars;
+  existing.settledAt = Date.now();
+  return existing;
 }
 
 export interface OracleVerificationResult {
@@ -433,6 +433,13 @@ export async function handlePropertyOracleRequest(
       };
     }
 
+    if (verifyResult.actualAmountTinybars !== BigInt(invoice.amountTinybars)) {
+      return {
+        status: 402,
+        error: `Payment verification failed: payment amount does not exactly match the required ${invoice.amountTinybars} tinybars.`,
+      };
+    }
+
     effectivePaymentTxId = paymentTx;
     effectivePaymentProvenance = "LIVE_ONCHAIN";
     recordInvoiceSettlement(
@@ -592,4 +599,3 @@ export async function handlePropertyOracleRequest(
     data: resultData,
   };
 }
-

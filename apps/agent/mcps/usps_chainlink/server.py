@@ -8,6 +8,7 @@ Settled autonomously via Hedera testnet x402 micropayments (Blocky402 facilitato
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any
 
@@ -35,6 +36,7 @@ except Exception:
 BASE_URL = os.environ.get("TOKENIZATION_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 AGENT_SECRET = os.environ.get("TOKENIZATION_AGENT_SECRET", "")
 HEDERA_OPERATOR_ID = os.environ.get("HEDERA_OPERATOR_ID", "0.0.4491823")
+HEDERA_ACCOUNT_ID_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 mcp = FastMCP("usps_chainlink")
 
@@ -55,6 +57,17 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
     invoice_id = challenge.get("invoiceId", "inv_unknown")
     payee = challenge.get("payee", HEDERA_OPERATOR_ID)
     amount = challenge.get("amount", "50000000")
+
+    if not isinstance(invoice_id, str) or not invoice_id:
+        raise UspsOracleError("Settlement failed: missing invoice ID in x402 challenge")
+    if not isinstance(payee, str) or not HEDERA_ACCOUNT_ID_RE.fullmatch(payee):
+        raise UspsOracleError("Settlement failed: invalid Hedera recipient in x402 challenge")
+    try:
+        amount_tinybars = int(str(amount))
+    except (TypeError, ValueError) as exc:
+        raise UspsOracleError("Settlement failed: invalid tinybar amount in x402 challenge") from exc
+    if amount_tinybars <= 0:
+        raise UspsOracleError("Settlement failed: payment amount must be positive")
 
     # Step 1: Check if direct Python Hedera SDK is available and operator key configured
     operator_key = os.environ.get("HEDERA_OPERATOR_KEY", "")
@@ -81,11 +94,11 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
                 hiero_sdk.TransferTransaction()
                 .add_hbar_transfer(
                     hiero_sdk.AccountId.from_string(operator_id),
-                    hiero_sdk.Hbar.from_tinybars(-int(amount)),
+                    hiero_sdk.Hbar.from_tinybars(-amount_tinybars),
                 )
                 .add_hbar_transfer(
                     hiero_sdk.AccountId.from_string(payee),
-                    hiero_sdk.Hbar.from_tinybars(int(amount)),
+                    hiero_sdk.Hbar.from_tinybars(amount_tinybars),
                 )
                 .set_transaction_memo(f"x402:{invoice_id}")
             )
@@ -93,12 +106,17 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
             receipt = response.get_receipt(client)
             if str(receipt.status) == "SUCCESS":
                 tx_id = str(response.transaction_id)
+                if not tx_id:
+                    raise UspsOracleError("Hedera returned a successful receipt without a transaction ID")
                 return {
                     "txId": tx_id,
                     "provenance": "LIVE_ONCHAIN",
                     "status": "CONFIRMED",
                     "invoiceId": invoice_id,
                 }
+            raise UspsOracleError(f"Hedera CryptoTransferTransaction failed with receipt status: {receipt.status}")
+        except UspsOracleError:
+            raise
         except Exception as exc:
             raise UspsOracleError(f"Direct Hedera CryptoTransferTransaction failed: {exc}") from exc
 
@@ -119,12 +137,27 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
         settle_res = httpx.request("POST", settle_url, json=settle_payload, headers=headers, timeout=25.0)
         if settle_res.status_code == 200:
             settle_data = settle_res.json()
-            return {
-                "txId": settle_data.get("txId"),  # will be None in simulation!
-                "provenance": settle_data.get("provenance", "SIMULATED"),
-                "status": settle_data.get("status", "SIMULATED"),
-                "invoiceId": invoice_id,
-            }
+            provenance = settle_data.get("provenance")
+            status = settle_data.get("status")
+            tx_id = settle_data.get("txId")
+
+            # Never let a response that merely contains a formatted transaction
+            # ID become live proof. The server must attest to a confirmed receipt.
+            if provenance == "LIVE_ONCHAIN" and status == "CONFIRMED" and isinstance(tx_id, str) and tx_id:
+                return {
+                    "txId": tx_id,
+                    "provenance": "LIVE_ONCHAIN",
+                    "status": "CONFIRMED",
+                    "invoiceId": invoice_id,
+                }
+            if provenance == "SIMULATED" and status == "SIMULATED" and tx_id is None:
+                return {
+                    "txId": None,
+                    "provenance": "SIMULATED",
+                    "status": "SIMULATED",
+                    "invoiceId": invoice_id,
+                }
+            raise UspsOracleError("Settlement service returned an invalid or unconfirmed settlement result")
         elif settle_res.is_error:
             try:
                 err_detail = settle_res.json().get("error", f"HTTP {settle_res.status_code}")

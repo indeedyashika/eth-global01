@@ -35,7 +35,20 @@ export interface SettleResult {
 const HEDERA_ACCOUNT_REGEX = /^\d+\.\d+\.\d+$/;
 
 export async function executeX402Payment(params: SettleRequestParams): Promise<SettleResult> {
-  const invoiceId = params.invoiceId || `inv_${Date.now()}`;
+  const invoiceId = params.invoiceId;
+  if (!invoiceId) {
+    return {
+      success: false,
+      txId: null,
+      hashscanUrl: null,
+      provenance: "SIMULATED",
+      status: "FAILED",
+      invoiceId: "",
+      amountTinybars: "0",
+      error: "Missing x402 invoice ID.",
+      code: "MISSING_INVOICE",
+    };
+  }
   const payeeStr = (params.payee || "").trim();
 
   // 1. Validate recipient account format
@@ -109,7 +122,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
           success: false,
           txId: null,
           hashscanUrl: null,
-          provenance: "LIVE_ONCHAIN",
+          provenance: "SIMULATED",
           status: "FAILED",
           invoiceId,
           amountTinybars: amountBigInt.toString(),
@@ -123,7 +136,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
         success: false,
         txId: null,
         hashscanUrl: null,
-        provenance: "LIVE_ONCHAIN",
+          provenance: "SIMULATED",
         status: "FAILED",
         invoiceId,
         amountTinybars: amountBigInt.toString(),
@@ -149,7 +162,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
         success: false,
         txId: null,
         hashscanUrl: null,
-        provenance: "LIVE_ONCHAIN",
+        provenance: "SIMULATED",
         status: "FAILED",
         invoiceId,
         amountTinybars: amountBigInt.toString(),
@@ -169,16 +182,18 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
       amountTinybars: amountBigInt.toString(),
     };
   } catch (err: any) {
+    const message = err?.message || String(err);
+    const timedOut = /timeout|timed out|deadline/i.test(message);
     return {
       success: false,
       txId: null,
       hashscanUrl: null,
-      provenance: "LIVE_ONCHAIN",
+      provenance: "SIMULATED",
       status: "FAILED",
       invoiceId,
       amountTinybars: amountBigInt.toString(),
-      error: `CryptoTransferTransaction execution failed: ${err.message || String(err)}`,
-      code: "TRANSACTION_FAILURE",
+      error: `CryptoTransferTransaction execution failed: ${message}`,
+      code: timedOut ? "TRANSACTION_TIMEOUT" : "TRANSACTION_FAILURE",
     };
   }
 }

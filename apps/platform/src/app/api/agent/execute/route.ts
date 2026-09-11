@@ -222,15 +222,17 @@ export async function POST(req: NextRequest) {
     const settlement = await executeX402Payment({
       invoiceId: invoice.invoiceId,
       payee: invoice.payee,
-      amountTinybars: invoice.amountTinybars,
+      amountTinybars: invoice.amount,
     });
 
-    recordInvoiceSettlement(
-      invoice.invoiceId,
-      settlement.txId,
-      settlement.provenance,
-      settlement.amountTinybars
-    );
+    if (settlement.success) {
+      recordInvoiceSettlement(
+        invoice.invoiceId,
+        settlement.txId,
+        settlement.provenance,
+        settlement.amountTinybars
+      );
+    }
 
     const oracleResult = await handlePropertyOracleRequest(
       {

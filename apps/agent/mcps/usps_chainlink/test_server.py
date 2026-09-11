@@ -89,6 +89,27 @@ class TestUspsChainlinkMcp(unittest.TestCase):
             self.assertEqual(result["invoiceId"], "inv_live_123")
 
     @patch("httpx.request")
+    def test_unconfirmed_live_result_cannot_be_returned_as_live(self, mock_request):
+        """A settlement response without a confirmed transaction cannot become live proof."""
+        mock_settle_res = MagicMock()
+        mock_settle_res.status_code = 200
+        mock_settle_res.is_error = False
+        mock_settle_res.json.return_value = {
+            "success": True,
+            "txId": None,
+            "provenance": "LIVE_ONCHAIN",
+            "status": "CONFIRMED",
+        }
+        mock_request.return_value = mock_settle_res
+
+        with patch.dict("os.environ", {"HEDERA_OPERATOR_ID": "", "HEDERA_OPERATOR_KEY": ""}):
+            with self.assertRaises(UspsOracleError) as ctx:
+                _settle_x402_micropayment(
+                    {"invoiceId": "inv_no_receipt", "payee": "0.0.4491823", "amount": "50000000"}
+                )
+        self.assertIn("invalid or unconfirmed", str(ctx.exception))
+
+    @patch("httpx.request")
     def test_validate_address_x402_flow_with_simulated_settlement(self, mock_request):
         """Verify autonomous interception of HTTP 402, settlement, and truthful oracle retry."""
         # 1. First request returns 402 Payment Required
