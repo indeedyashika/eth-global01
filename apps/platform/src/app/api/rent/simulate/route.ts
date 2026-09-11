@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logHcsAuditEvent } from "@/lib/hedera/hcsAudit";
+import { handleRoute } from "@/lib/api/helpers";
+import { requireOperatorSession } from "@/lib/api/sessionAuth";
 
 export async function POST(req: NextRequest) {
-  try {
+  return handleRoute(async () => {
+    requireOperatorSession(req);
     const body = await req.json();
     const propertyId = body.propertyId || "prop_456_oak_ave";
     const amount = Number(body.amount || 3800);
@@ -63,8 +66,5 @@ export async function POST(req: NextRequest) {
       hcsAudit: hcsReceipt,
       depositTimestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
-  }
+  });
 }

@@ -5,6 +5,7 @@ import { createToken } from "@/lib/hedera/tokenService";
 import { getOperatorId } from "@/lib/hedera/client";
 import { createTokenSchema } from "@/lib/validation";
 import { configuredHederaNetwork } from "@/lib/chains";
+import { requireOperatorSession } from "@/lib/api/sessionAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    requireOperatorSession(req);
     const body = await readJson<unknown>(req);
     const input = createTokenSchema.parse(body);
     if (input.blockchain !== "HEDERA") {

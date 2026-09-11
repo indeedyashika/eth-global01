@@ -3,6 +3,7 @@ import { handleRoute, readJson } from "@/lib/api/helpers";
 import { insertEvent, insertToken, listTokens } from "@/lib/db/repo";
 import { createEvmTokenSchema } from "@/lib/validation";
 import { deployEvmToken, getEvmOperatorAddress } from "@/lib/evm/client";
+import { requireOperatorSession } from "@/lib/api/sessionAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    requireOperatorSession(req);
     const body = await readJson<Record<string, unknown>>(req);
     const input = createEvmTokenSchema.parse({ ...body, blockchain: "EVM" });
     const compliance = input.compliance.worldIdRequired

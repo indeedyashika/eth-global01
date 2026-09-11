@@ -153,11 +153,11 @@ async function runTests() {
     propertyId: "0.0.4491823",
     rentAmountUsd: 3800,
   });
-  assert.strictEqual(rentRes.status, 200, "Rent simulation must return 200");
+  assert.strictEqual(rentRes.status, 401, "Unauthenticated rent simulation must be rejected");
+  assert.strictEqual(rentRes.data?.success, false, "Unauthenticated rent simulation cannot succeed");
   assert.strictEqual(rentRes.data?.txId, null, "Rent simulate txId must be null");
   assert.strictEqual(rentRes.data?.hashscanUrl, null, "Rent simulate hashscanUrl must be null");
-  assert.strictEqual(rentRes.data?.provenance, "SIMULATED", "Rent simulate provenance must be SIMULATED");
-  console.log("[PASS] /api/rent/simulate verified: txId null, hashscanUrl null, provenance SIMULATED");
+  console.log("[PASS] /api/rent/simulate rejects unauthenticated deposit attempts without a receipt");
   passed++;
 
   console.log(`\nResults: ${passed}/${passed} tests passed successfully.`);
