@@ -1,0 +1,19 @@
+{
+  "name": "graph-experiments-subgraph",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "add-source": "node scripts/add-source.mjs",
+    "set-sources": "node scripts/set-sources.mjs",
+    "deploy": "node --env-file-if-exists=.env scripts/deploy.mjs"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "^0.97.1",
+    "@graphprotocol/graph-ts": "^0.38.1"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

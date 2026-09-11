@@ -1,0 +1,39 @@
+{
+  "$schema": "https://specs.blocky402.com/agent-services-v1.json",
+  "name": "Prism 8 Real-Estate Oracle & Yield Engine",
+  "description": "Agent-operable real estate address verification, DPV delivery validation, and yield streaming engine settled via x402 on Hedera.",
+  "version": "1.0.0",
+  "provider": "Prism 8 / Mint & Chill",
+  "services": [
+    {
+      "id": "property-address-validation",
+      "name": "USPS Physical Property Address & DPV Oracle",
+      "description": "Validates physical US address against USPS records, verifies delivery point viability (DPV), computes standardized canonical address and keccak256 hash for smart contract registry.",
+      "endpoint": "/api/x402/property-oracle",
+      "method": "POST",
+      "requestSchema": {
+        "type": "object",
+        "properties": {
+          "street": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "zip": { "type": "string" }
+        },
+        "required": ["street", "city", "state", "zip"]
+      },
+      "pricing": {
+        "model": "metered_per_call",
+        "network": "hedera-testnet",
+        "facilitator": "blocky402",
+        "cost": "0.5 HBAR",
+        "tinybars": 50000000,
+        "acceptedTokens": ["HBAR", "0.0.USDC_HTS"],
+        "settlement": "instant"
+      },
+      "audit": {
+        "mechanism": "HCS",
+        "description": "Every settlement publishes an unforgeable consensus receipt on Hedera Consensus Service."
+      }
+    }
+  ]
+}

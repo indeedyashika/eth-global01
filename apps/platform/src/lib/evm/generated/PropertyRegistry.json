@@ -1,0 +1,416 @@
+{
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "oldOracle",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOracle",
+          "type": "address"
+        }
+      ],
+      "name": "OracleUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "hederaTokenId",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "monthlyRentUsd",
+          "type": "uint256"
+        }
+      ],
+      "name": "PropertyRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum PropertyRegistry.PropertyStatus",
+          "name": "oldStatus",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum PropertyRegistry.PropertyStatus",
+          "name": "newStatus",
+          "type": "uint8"
+        }
+      ],
+      "name": "PropertyStatusUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "addressHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "isValid",
+          "type": "bool"
+        }
+      ],
+      "name": "PropertyVerified",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "vaultAddress",
+          "type": "address"
+        }
+      ],
+      "name": "VaultLinked",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "authorizedOracle",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getProperty",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "propertyId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "addressHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bool",
+              "name": "uspsVerified",
+              "type": "bool"
+            },
+            {
+              "internalType": "string",
+              "name": "hederaTokenId",
+              "type": "string"
+            },
+            {
+              "internalType": "enum PropertyRegistry.PropertyStatus",
+              "name": "status",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bool",
+              "name": "isSlashable",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "monthlyRentUsd",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "vaultAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "registeredAt",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "verifiedAt",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct PropertyRegistry.Property",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "properties",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "addressHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "uspsVerified",
+          "type": "bool"
+        },
+        {
+          "internalType": "string",
+          "name": "hederaTokenId",
+          "type": "string"
+        },
+        {
+          "internalType": "enum PropertyRegistry.PropertyStatus",
+          "name": "status",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bool",
+          "name": "isSlashable",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "monthlyRentUsd",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "vaultAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "registeredAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "verifiedAt",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "propertyIds",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "string",
+          "name": "hederaTokenId",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "monthlyRentUsd",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "isSlashable",
+          "type": "bool"
+        }
+      ],
+      "name": "registerProperty",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_oracle",
+          "type": "address"
+        }
+      ],
+      "name": "setAuthorizedOracle",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "vaultAddress",
+          "type": "address"
+        }
+      ],
+      "name": "setVaultAddress",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "addressHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "isValid",
+          "type": "bool"
+        }
+      ],
+      "name": "setVerificationStatus",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalProperties",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "enum PropertyRegistry.PropertyStatus",
+          "name": "newStatus",
+          "type": "uint8"
+        }
+      ],
+      "name": "updatePropertyStatus",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080604052348015600e575f5ffd5b505f80546001600160a01b03191633179055610f298061002d5f395ff3fe608060405234801561000f575f5ffd5b50600436106100a6575f3560e01c8063591b996d1161006e578063591b996d146101345780635f84ec76146101475780638da5cb5b1461015a578063bd1562731461016c578063d03b47f414610195578063e1a8f8ba146101a8575f5ffd5b80630738ff9d146100aa5780630b3bce20146100bf5780632a6d2c17146100d6578063463f7a89146100e957806354bede8d14610109575b5f5ffd5b6100bd6100b8366004610a11565b6101bb565b005b6003545b6040519081526020015b60405180910390f35b6100bd6100e4366004610a3b565b610272565b6100fc6100f7366004610a5b565b6102f6565b6040516100cd9190610ad4565b60015461011c906001600160a01b031681565b6040516001600160a01b0390911681526020016100cd565b6100bd610142366004610b93565b6104bc565b6100bd610155366004610c24565b610716565b5f5461011c906001600160a01b031681565b61017f61017a366004610a5b565b61083c565b6040516100cd9a99989796959493929190610c56565b6100c36101a3366004610a5b565b610924565b6100bd6101b6366004610cc4565b610943565b5f546001600160a01b031633146101ed5760405162461bcd60e51b81526004016101e490610cf5565b60405180910390fd5b5f82815260026020526040902080546102185760405162461bcd60e51b81526004016101e490610d22565b6006810180546001600160a01b0319166001600160a01b03841690811790915560405190815283907fe074c7caff0aaba010da68c5453582ef542ed4395c20d790d83ae9f67bebc87f9060200160405180910390a2505050565b5f546001600160a01b0316331461029b5760405162461bcd60e51b81526004016101e490610cf5565b6001546040516001600160a01b038084169216907f078c3b417dadf69374a59793b829c52001247130433427049317bde56607b1b7905f90a3600180546001600160a01b0319166001600160a01b0392909216919091179055565b60408051610140810182525f808252602082018190529181018290526060808201526080810182905260a0810182905260c0810182905260e0810182905261010081018290526101208101919091525f8281526002602052604090205461036f5760405162461bcd60e51b81526004016101e490610d22565b5f82815260026020818152604092839020835161014081018552815481526001820154928101929092529182015460ff161515928101929092526003810180546060840191906103be90610d4e565b80601f01602080910402602001604051908101604052809291908181526020018280546103ea90610d4e565b80156104355780601f1061040c57610100808354040283529160200191610435565b820191905f5260205f20905b81548152906001019060200180831161041857829003601f168201915b505050918352505060048281015460209092019160ff169081111561045c5761045c610aa0565b600481111561046d5761046d610aa0565b81526004820154610100900460ff16151560208201526005820154604082015260068201546001600160a01b031660608201526007820154608082015260089091015460a09091015292915050565b5f546001600160a01b031633146104e55760405162461bcd60e51b81526004016101e490610cf5565b5f85815260026020526040902054156105405760405162461bcd60e51b815260206004820152601b60248201527f50726f706572747920616c72656164792072656769737465726564000000000060448201526064016101e4565b6040518061014001604052808681526020015f5f1b81526020015f1515815260200185858080601f0160208091040260200160405190810160405280939291908181526020018383808284375f920182905250938552505060209092019150815282151560208083019190915260408083018690525f606080850182905242608086015260a09094018190528981526002808452908290208551815592850151600184015590840151908201805460ff191691151591909117905590820151600382019061060e9082610de6565b506080820151816004015f6101000a81548160ff0219169083600481111561063857610638610aa0565b021790555060a082015160048201805461ff001916610100921515830217905560c0830151600583015560e08301516006830180546001600160a01b0319166001600160a01b03909216919091179055820151600782015561012090910151600890910155600380546001810182555f919091527fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b0185905560405185907f88c9a17f0123146d94ecfdd7fab49b3af65a9ec664c376cc93e8610828aa5b2c9061070790879087908790610ea1565b60405180910390a25050505050565b5f546001600160a01b031633148061073857506001546001600160a01b031633145b6107845760405162461bcd60e51b815260206004820152601860248201527f4e6f7420617574686f72697a656420746f20766572696679000000000000000060448201526064016101e4565b5f83815260026020526040902080546107af5760405162461bcd60e51b81526004016101e490610d22565b6001810183905560028101805460ff191683158015919091179091554260088301556107e95760048101805460ff191660011790556107f9565b60048101805460ff191660031790555b60408051848152831515602082015285917fa90d9213565cc0187d0597b8197aec704b21b1f42659654ee3ac64d418214e2f91015b60405180910390a250505050565b600260208190525f9182526040909120805460018201549282015460038301805492949360ff9092169261086f90610d4e565b80601f016020809104026020016040519081016040528092919081815260200182805461089b90610d4e565b80156108e65780601f106108bd576101008083540402835291602001916108e6565b820191905f5260205f20905b8154815290600101906020018083116108c957829003601f168201915b5050506004840154600585015460068601546007870154600890970154959660ff808516976101009095041695509193506001600160a01b0316918a565b60038181548110610933575f80fd5b5f91825260209091200154905081565b5f546001600160a01b0316331461096c5760405162461bcd60e51b81526004016101e490610cf5565b5f82815260026020526040902080546109975760405162461bcd60e51b81526004016101e490610d22565b6004808201805460ff81169285929160ff19169060019084908111156109bf576109bf610aa0565b0217905550837f3808b67080e32f8a08b1e34e540742c268fc966a96218e5280c3d094e83e2c7a828560405161082e929190610ed8565b80356001600160a01b0381168114610a0c575f5ffd5b919050565b5f5f60408385031215610a22575f5ffd5b82359150610a32602084016109f6565b90509250929050565b5f60208284031215610a4b575f5ffd5b610a54826109f6565b9392505050565b5f60208284031215610a6b575f5ffd5b5035919050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b634e487b7160e01b5f52602160045260245ffd5b60058110610ad057634e487b7160e01b5f52602160045260245ffd5b9052565b6020815281516020820152602082015160408201525f6040830151610afd606084018215159052565b5060608301516101406080840152610b19610160840182610a72565b90506080840151610b2d60a0850182610ab4565b5060a084015180151560c08501525060c084015160e084015260e0840151610b616101008501826001600160a01b03169052565b506101008401516101208401526101208401516101408401528091505092915050565b80358015158114610a0c575f5ffd5b5f5f5f5f5f60808688031215610ba7575f5ffd5b85359450602086013567ffffffffffffffff811115610bc4575f5ffd5b8601601f81018813610bd4575f5ffd5b803567ffffffffffffffff811115610bea575f5ffd5b886020828401011115610bfb575f5ffd5b6020919091019450925060408601359150610c1860608701610b84565b90509295509295909350565b5f5f5f60608486031215610c36575f5ffd5b8335925060208401359150610c4d60408501610b84565b90509250925092565b8a8152896020820152881515604082015261014060608201525f610c7e61014083018a610a72565b9050610c8d6080830189610ab4565b95151560a082015260c08101949094526001600160a01b039290921660e08401526101008301526101209091015295945050505050565b5f5f60408385031215610cd5575f5ffd5b82359150602083013560058110610cea575f5ffd5b809150509250929050565b60208082526013908201527213db9b1e481bdddb995c8818d85b8818d85b1b606a1b604082015260600190565b602080825260129082015271141c9bdc195c9d1e481b9bdd08199bdd5b9960721b604082015260600190565b600181811c90821680610d6257607f821691505b602082108103610d8057634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f821115610de157805f5260205f20601f840160051c81016020851015610dbf5750805b601f840160051c820191505b81811015610dde575f8155600101610dcb565b50505b505050565b815167ffffffffffffffff811115610e0057610e00610d86565b610e1481610e0e8454610d4e565b84610d9a565b6020601f821160018114610e46575f8315610e2f5750848201515b5f19600385901b1c1916600184901b178455610dde565b5f84815260208120601f198516915b82811015610e755787850151825560209485019460019092019101610e55565b5084821015610e9257868401515f19600387901b60f8161c191681555b50505050600190811b01905550565b60408152826040820152828460608301375f606084830101525f6060601f19601f8601168301019050826020830152949350505050565b60408101610ee68285610ab4565b610a546020830184610ab456fea2646970667358221220b158665361cdeab4ce1b3059870f3c03a5cd1398eadfcb109ce87aa16e6c1a4864736f6c634300081e0033"
+}

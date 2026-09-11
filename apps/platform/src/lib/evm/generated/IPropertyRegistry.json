@@ -1,0 +1,28 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "addressHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "isValid",
+          "type": "bool"
+        }
+      ],
+      "name": "setVerificationStatus",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x"
+}

@@ -1,0 +1,258 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_router",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_registry",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_donId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "_subscriptionId",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "addressHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "isValid",
+          "type": "bool"
+        }
+      ],
+      "name": "AddressValidationFulfilled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "street",
+          "type": "string"
+        }
+      ],
+      "name": "AddressValidationRequested",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "donId",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "addressHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "isValid",
+          "type": "bool"
+        }
+      ],
+      "name": "handleOracleFulfillment",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "registry",
+      "outputs": [
+        {
+          "internalType": "contract IPropertyRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "propertyId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "string",
+          "name": "street",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "city",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "state",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "zip",
+          "type": "string"
+        }
+      ],
+      "name": "requestAddressValidation",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "requestIdToPropertyId",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "router",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_registry",
+          "type": "address"
+        }
+      ],
+      "name": "setRegistry",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_router",
+          "type": "address"
+        }
+      ],
+      "name": "setRouter",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "subscriptionId",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x608060405234801561000f575f5ffd5b5060405161082238038061082283398101604081905261002e916100ad565b5f8054336001600160a01b0319918216179091556001805482166001600160a01b03968716179055600280549091169390941692909217909255600391909155600480546001600160401b0319166001600160401b03909216919091179055610105565b80516001600160a01b03811681146100a8575f5ffd5b919050565b5f5f5f5f608085870312156100c0575f5ffd5b6100c985610092565b93506100d760208601610092565b6040860151606087015191945092506001600160401b03811681146100fa575f5ffd5b939692955090935050565b610710806101125f395ff3fe608060405234801561000f575f5ffd5b506004361061009b575f3560e01c80638dbe7b9d116100635780638dbe7b9d1461014e578063a91ee0dc14610157578063c0d786551461016c578063ed67415a1461017f578063f887ea4014610192575f5ffd5b806309c1ba2e1461009f5780632e960701146100d1578063735106e7146100f25780637b103999146101115780638da5cb5b1461013c575b5f5ffd5b6004546100b39067ffffffffffffffff1681565b60405167ffffffffffffffff90911681526020015b60405180910390f35b6100e46100df3660046104f7565b6101a5565b6040519081526020016100c8565b6100e46101003660046105d0565b60056020525f908152604090205481565b600254610124906001600160a01b031681565b6040516001600160a01b0390911681526020016100c8565b5f54610124906001600160a01b031681565b6100e460035481565b61016a6101653660046105e7565b6102a6565b005b61016a61017a3660046105e7565b610317565b61016a61018d366004610614565b610388565b600154610124906001600160a01b031681565b5f80546001600160a01b03163314806101c857506002546001600160a01b031633145b6102125760405162461bcd60e51b81526020600482015260166024820152752ab730baba3437b934bd32b2103932b8bab2b9ba32b960511b60448201526064015b60405180910390fd5b89428a8a8a8a8a8a8a8a6040516020016102359a99989796959493929190610656565b60408051601f1981840301815282825280516020918201205f81815260059092529190208c905591508a907fd5d470bcc5956031a547c5b448fcbe0c8079ce3c9024014d8e24bc1e9d094f08906102919084908d908d906106a5565b60405180910390a29998505050505050505050565b5f546001600160a01b031633146102f55760405162461bcd60e51b815260206004820152601360248201527213db9b1e481bdddb995c8818d85b8818d85b1b606a1b6044820152606401610209565b600280546001600160a01b0319166001600160a01b0392909216919091179055565b5f546001600160a01b031633146103665760405162461bcd60e51b815260206004820152601360248201527213db9b1e481bdddb995c8818d85b8818d85b1b606a1b6044820152606401610209565b600180546001600160a01b0319166001600160a01b0392909216919091179055565b5f546001600160a01b03163314806103aa57506001546001600160a01b031633145b6103ef5760405162461bcd60e51b81526020600482015260166024820152752ab730baba3437b934bd32b210333ab63334b63632b960511b6044820152606401610209565b5f848152600560205260409020548015610407578093505b600254604051632fc2763b60e11b8152600481018690526024810185905283151560448201526001600160a01b0390911690635f84ec76906064015f604051808303815f87803b158015610459575f5ffd5b505af115801561046b573d5f5f3e3d5ffd5b50506040805186815285151560208201528793507fb63824e9799054de1b4a417355a616d87fd49c08190ed70b9231c9e773fa424e92500160405180910390a25050505050565b5f5f83601f8401126104c2575f5ffd5b50813567ffffffffffffffff8111156104d9575f5ffd5b6020830191508360208285010111156104f0575f5ffd5b9250929050565b5f5f5f5f5f5f5f5f5f60a08a8c03121561050f575f5ffd5b8935985060208a013567ffffffffffffffff81111561052c575f5ffd5b6105388c828d016104b2565b90995097505060408a013567ffffffffffffffff811115610557575f5ffd5b6105638c828d016104b2565b90975095505060608a013567ffffffffffffffff811115610582575f5ffd5b61058e8c828d016104b2565b90955093505060808a013567ffffffffffffffff8111156105ad575f5ffd5b6105b98c828d016104b2565b915080935050809150509295985092959850929598565b5f602082840312156105e0575f5ffd5b5035919050565b5f602082840312156105f7575f5ffd5b81356001600160a01b038116811461060d575f5ffd5b9392505050565b5f5f5f5f60808587031215610627575f5ffd5b8435935060208501359250604085013591506060850135801515811461064b575f5ffd5b939692955090935050565b8a8152896020820152878960408301375f888201604081015f8152888a8237505f908801604001908152858782375f908601908152838582375f930192835250909a9950505050505050505050565b83815260406020820152816040820152818360608301375f818301606090810191909152601f909201601f191601019291505056fea2646970667358221220a2e321f7d7694e847cff6c61742355f46dbf51b502158640b90aed2cc16ac45664736f6c634300081e0033"
+}
