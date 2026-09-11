@@ -9,10 +9,10 @@ export async function POST(req: NextRequest) {
     const tenantName = body.tenantName || "Acme Residential Tenant Corp";
 
     const flowRatePerSec = amount / 2592000;
-    const txId = `0.0.4491823@${Math.floor(Date.now() / 1000)}.000000000`;
+    const txId = null;
 
     // Log unforgeable event to Hedera Consensus Service
-    const hcsReceipt = await logHcsAuditEvent({
+    let hcsReceipt = await logHcsAuditEvent({
       event: "TENANT_RENT_DEPOSITED",
       propertyId,
       amount: `$${amount} USD`,
@@ -23,6 +23,11 @@ export async function POST(req: NextRequest) {
         calculatedFlowRate: flowRatePerSec,
       },
     });
+
+    // Enforce simulated provenance for simulation route
+    hcsReceipt.txId = null;
+    hcsReceipt.hashscanUrl = null;
+    hcsReceipt.provenance = "SIMULATED";
 
     // Persist event to sqlite audit trail
     try {
@@ -39,7 +44,8 @@ export async function POST(req: NextRequest) {
           hcsSequenceNumber: hcsReceipt.sequenceNumber,
         },
         txId,
-        hashscanUrl: hcsReceipt.hashscanUrl || `https://hashscan.io/testnet/topic/0.0.4491823`,
+        hashscanUrl: null,
+        provenance: "SIMULATED",
       });
     } catch (e) {
       console.warn("[simulate rent] Could not record event in sqlite:", e);

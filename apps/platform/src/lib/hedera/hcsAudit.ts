@@ -21,12 +21,13 @@ export interface HcsAuditEventPayload {
 }
 
 export interface HcsAuditReceipt {
-  topicId: string;
-  sequenceNumber: number;
+  topicId: string | null;
+  sequenceNumber: number | null;
   consensusTimestamp: string;
-  txId: string;
-  hashscanUrl: string;
+  txId: string | null;
+  hashscanUrl: string | null;
   event: string;
+  provenance: "LIVE_ONCHAIN" | "SIMULATED";
 }
 
 let cachedTopicId: string | null = process.env.HEDERA_AUDIT_TOPIC_ID ?? null;
@@ -85,18 +86,17 @@ export async function logHcsAuditEvent(payload: HcsAuditEventPayload): Promise<H
       txId: txIdStr,
       hashscanUrl: hashscanTxUrl(txIdStr),
       event: payload.event,
+      provenance: "LIVE_ONCHAIN",
     };
   } catch (error) {
-    // Fallback deterministic receipt for simulated test environments
-    const mockSeq = Math.floor(Date.now() / 1000) % 100000;
-    const mockTxId = payload.txId ?? `0.0.4491823@${Math.floor(Date.now() / 1000)}.000000000`;
     return {
       topicId: topicIdStr,
-      sequenceNumber: mockSeq,
+      sequenceNumber: null,
       consensusTimestamp: timestamp,
-      txId: mockTxId,
-      hashscanUrl: `https://hashscan.io/testnet/transaction/${encodeURIComponent(mockTxId)}`,
+      txId: null,
+      hashscanUrl: null,
       event: payload.event,
+      provenance: "SIMULATED",
     };
   }
 }

@@ -112,7 +112,7 @@ export default function HermesConsolePage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Payment-Tx": `0.0.4491823@${Math.floor(Date.now() / 1000)}.000000000`,
+            "X-Payment-Tx": `SIMULATED_PAYMENT`,
             "X-Payment-Invoice": "inv_console_demo",
           },
           body: JSON.stringify({ street: "456 Oak Avenue", city: "Miami", state: "FL", zip: "33101" }),
@@ -462,7 +462,7 @@ export default function HermesConsolePage() {
           <HcsAuditBadge
             topicId="0.0.4491823"
             sequenceNumber={83526}
-            txId="0.0.4491823@1788783526.000000000"
+            txId="SIMULATED_PAYMENT"
           />
         </div>
 

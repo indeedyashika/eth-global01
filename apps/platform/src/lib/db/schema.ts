@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 
   paused                     INTEGER NOT NULL DEFAULT 0,
   create_tx_id                TEXT,
+  provenance                  TEXT NOT NULL DEFAULT 'LIVE_ONCHAIN',
   created_at                  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS events (
   detail        TEXT,            -- JSON blob
   tx_id         TEXT,
   hashscan_url  TEXT,
+  provenance    TEXT NOT NULL DEFAULT 'LIVE_ONCHAIN',
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

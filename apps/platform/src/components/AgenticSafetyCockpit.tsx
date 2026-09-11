@@ -524,7 +524,13 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {step.network?.includes("The Graph") ? (
+                    {step.provenance === "SIMULATED" || !step.txId ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-bold tracking-wider">
+                          SIMULATED
+                        </span>
+                      </div>
+                    ) : step.network?.includes("The Graph") ? (
                       <div className="flex items-center gap-1.5">
                         <span className="text-neutral-500 font-mono text-[10px]">
                           IPFS: {step.txId.slice(0, 14)}...

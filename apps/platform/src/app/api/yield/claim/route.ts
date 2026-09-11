@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const claimAmount = Math.max(0.01, Number(amount));
-    const txId = `0.0.4491823@${Math.floor(Date.now() / 1000)}.000000000`;
-    const hashscanUrl = `https://hashscan.io/testnet/transaction/${txId}`;
+    const txId = null;
+    const hashscanUrl = null;
 
     // Anchor verifiable payout receipt on Hedera Consensus Service
     const hcsReceipt = await logHcsAuditEvent({
@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
         claimedAt: new Date().toISOString(),
       },
     });
+
+    hcsReceipt.txId = null;
+    hcsReceipt.hashscanUrl = null;
+    hcsReceipt.provenance = "SIMULATED";
 
     // Persist immutable transfer event to database
     try {
@@ -46,6 +50,7 @@ export async function POST(req: NextRequest) {
         },
         txId,
         hashscanUrl,
+        provenance: "SIMULATED",
       });
     } catch (dbErr) {
       console.warn("[claim route] Could not insert event into sqlite:", dbErr);

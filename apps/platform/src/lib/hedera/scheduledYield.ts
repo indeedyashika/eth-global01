@@ -19,8 +19,9 @@ export interface ScheduledYieldPayoutResult {
   recipientCount: number;
   totalPayoutAmount: number;
   scheduledExecutionTime: string;
-  txId: string;
-  hashscanUrl: string;
+  txId: string | null;
+  hashscanUrl: string | null;
+  provenance: "LIVE_ONCHAIN" | "SIMULATED";
 }
 
 export interface YieldRecipient {
@@ -83,20 +84,19 @@ export async function scheduleRecurringYieldPayout(
       scheduledExecutionTime: executionTime.toISOString(),
       txId: txIdStr,
       hashscanUrl: hashscanTxUrl(txIdStr),
+      provenance: "LIVE_ONCHAIN",
     };
   } catch (error) {
-    // Fallback simulation for offline testing
-    const mockId = `0.0.${Math.floor(Date.now() / 1000) % 900000 + 100000}`;
-    const mockTxId = `0.0.operator@${Math.floor(Date.now() / 1000)}.000000000`;
     return {
-      scheduleId: mockId,
+      scheduleId: "SIMULATED_SCHEDULE",
       propertyId,
       tokenId: payoutTokenId,
       recipientCount: recipients.length,
       totalPayoutAmount: totalAmount,
       scheduledExecutionTime: executionTime.toISOString(),
-      txId: mockTxId,
-      hashscanUrl: `https://hashscan.io/testnet/transaction/${encodeURIComponent(mockTxId)}`,
+      txId: null,
+      hashscanUrl: null,
+      provenance: "SIMULATED",
     };
   }
 }

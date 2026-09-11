@@ -212,5 +212,6 @@ export interface EventRecord {
   detail: Record<string, unknown> | null;
   txId: string | null;
   hashscanUrl: string | null;
+  provenance?: "LIVE_ONCHAIN" | "SIMULATED" | "FIXTURE";
   createdAt: string;
 }

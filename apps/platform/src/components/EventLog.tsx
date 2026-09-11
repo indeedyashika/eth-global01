@@ -39,11 +39,15 @@ export default function EventLog({ events }: { events: EventRecord[] }) {
                 {event.accountId && <span className="text-zinc-500 font-mono text-xs ml-2">{event.accountId}</span>}
                 <div className="text-xs text-zinc-500">{new Date(event.createdAt).toLocaleString()}</div>
               </div>
-              {event.hashscanUrl && (
+              {event.provenance === "SIMULATED" || (!event.txId && !event.hashscanUrl) ? (
+                <span className="px-2 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-bold tracking-wider">
+                  SIMULATED
+                </span>
+              ) : event.hashscanUrl ? (
                 <a href={event.hashscanUrl} target="_blank" rel="noreferrer" className="text-xs text-zinc-500 hover:underline shrink-0">
                   Explorer ↗
                 </a>
-              )}
+              ) : null}
             </li>
           ))}
         </ol>

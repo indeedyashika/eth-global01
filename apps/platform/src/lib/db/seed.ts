@@ -14,7 +14,7 @@ export function seedDatabase(db: Database.Database): void {
       liveness_enabled, liveness_period_seconds,
       custom_fee_enabled, custom_fee_config,
       has_admin_key, has_kyc_key, has_freeze_key, has_wipe_key, has_pause_key, has_supply_key, has_fee_schedule_key,
-      paused, create_tx_id, created_at
+      paused, create_tx_id, provenance, created_at
     ) VALUES (
       @id, @blockchain, @network, @name, @symbol, @token_type, @decimals, @initial_supply, @supply_type, @max_supply,
       @treasury_account_id, @asset_category, @memo,
@@ -23,7 +23,7 @@ export function seedDatabase(db: Database.Database): void {
       @liveness_enabled, @liveness_period_seconds,
       @custom_fee_enabled, @custom_fee_config,
       @has_admin_key, @has_kyc_key, @has_freeze_key, @has_wipe_key, @has_pause_key, @has_supply_key, @has_fee_schedule_key,
-      @paused, @create_tx_id, @created_at
+      @paused, @create_tx_id, @provenance, @created_at
     )
   `);
 
@@ -46,8 +46,8 @@ export function seedDatabase(db: Database.Database): void {
   `);
 
   const insertEvent = db.prepare(`
-    INSERT INTO events (token_id, account_id, type, detail, tx_id, hashscan_url, created_at)
-    VALUES (@token_id, @account_id, @type, @detail, @tx_id, @hashscan_url, @created_at)
+    INSERT INTO events (token_id, account_id, type, detail, tx_id, hashscan_url, provenance, created_at)
+    VALUES (@token_id, @account_id, @type, @detail, @tx_id, @hashscan_url, @provenance, @created_at)
   `);
 
   // Seed Property 1: 456 Oak Avenue Luxury Residences (Hedera HTS + Base Sepolia CFA Stream)
@@ -87,6 +87,7 @@ export function seedDatabase(db: Database.Database): void {
       has_fee_schedule_key: 0,
       paused: 0,
       create_tx_id: "0.0.4491823@1789066000.000000000",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
     });
 
@@ -194,6 +195,7 @@ export function seedDatabase(db: Database.Database): void {
       }),
       tx_id: "0.0.4491823@1789066000.000000000",
       hashscan_url: "https://hashscan.io/testnet/transaction/0.0.4491823@1789066000.000000000",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 20).toISOString(),
     });
 
@@ -208,6 +210,7 @@ export function seedDatabase(db: Database.Database): void {
       }),
       tx_id: "0.0.5180265-1789066233-697953817",
       hashscan_url: "https://hashscan.io/testnet/transaction/0.0.5180265-1789066233-697953817",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
     });
 
@@ -222,6 +225,7 @@ export function seedDatabase(db: Database.Database): void {
       }),
       tx_id: "0.0.7095826-1789066232-061237484",
       hashscan_url: "https://hashscan.io/testnet/transaction/0.0.7095826-1789066232-061237484",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 6).toISOString(),
     });
 
@@ -238,6 +242,7 @@ export function seedDatabase(db: Database.Database): void {
       }),
       tx_id: "0.0.4491823@1789066100.000000000",
       hashscan_url: "https://hashscan.io/testnet/topic/0.0.4491823",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
     });
   }
@@ -280,6 +285,7 @@ export function seedDatabase(db: Database.Database): void {
       has_fee_schedule_key: 0,
       paused: 0,
       create_tx_id: "0x1e0d77de7d53b824bd0d925cc768efc21bff74cfc51f8ced8f45298fc337f4f2",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 48).toISOString(),
     });
 
@@ -340,6 +346,7 @@ export function seedDatabase(db: Database.Database): void {
       }),
       tx_id: "0x1e0d77de7d53b824bd0d925cc768efc21bff74cfc51f8ced8f45298fc337f4f2",
       hashscan_url: "https://sepolia.etherscan.io/tx/0x1e0d77de7d53b824bd0d925cc768efc21bff74cfc51f8ced8f45298fc337f4f2",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 40).toISOString(),
     });
   }
@@ -382,6 +389,7 @@ export function seedDatabase(db: Database.Database): void {
       has_fee_schedule_key: 0,
       paused: 0,
       create_tx_id: "0.0.5258180@1789065900.000000000",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 72).toISOString(),
     });
 
@@ -421,6 +429,7 @@ export function seedDatabase(db: Database.Database): void {
       }),
       tx_id: "0.0.5258180@1789065900.000000000",
       hashscan_url: "https://hashscan.io/testnet/token/0.0.5258180",
+      provenance: "FIXTURE",
       created_at: new Date(Date.now() - 3600000 * 60).toISOString(),
     });
   }

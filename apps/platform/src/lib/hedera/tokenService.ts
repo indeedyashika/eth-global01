@@ -62,9 +62,9 @@ function buildCustomFee(config: CustomFeeConfig, collector: AccountId): CustomFe
 }
 
 export interface CreateTokenResult {
-  tokenId: string;
-  txId: string;
-  hashscanUrl: string;
+  tokenId: string | null;
+  txId: string | null;
+  hashscanUrl: string | null;
   keys: {
     admin: boolean;
     kyc: boolean;
@@ -74,6 +74,7 @@ export interface CreateTokenResult {
     supply: boolean;
     feeSchedule: boolean;
   };
+  provenance: "LIVE_ONCHAIN" | "SIMULATED";
 }
 
 /**
@@ -93,14 +94,12 @@ export async function createToken(params: CreateTokenParams): Promise<CreateToke
   };
 
   if (!isOperatorConfigured()) {
-    // Generate valid testnet token ID & transaction for development/demo environments
-    const fallbackTokenId = `0.0.${Math.floor(Date.now() / 1000) % 900000 + 4490000}`;
-    const fallbackTxId = `0.0.4491823-${Math.floor(Date.now() / 1000)}-000000000`;
     return {
-      tokenId: fallbackTokenId,
-      txId: fallbackTxId,
-      hashscanUrl: `https://hashscan.io/testnet/token/${fallbackTokenId}`,
+      tokenId: null,
+      txId: null,
+      hashscanUrl: null,
       keys,
+      provenance: "SIMULATED",
     };
   }
 
@@ -145,7 +144,7 @@ export async function createToken(params: CreateTokenParams): Promise<CreateToke
   const tokenId = receipt.tokenId!.toString();
   const txId = response.transactionId.toString();
 
-  return { tokenId, txId, hashscanUrl: hashscanTxUrl(txId), keys };
+  return { tokenId, txId, hashscanUrl: hashscanTxUrl(txId), keys, provenance: "LIVE_ONCHAIN" };
 }
 
 export async function getTokenBalanceBaseUnits(tokenId: string, accountId: string): Promise<bigint> {
@@ -168,8 +167,9 @@ export async function isAssociated(tokenId: string, accountId: string): Promise<
 }
 
 interface TxResult {
-  txId: string;
-  hashscanUrl: string;
+  txId: string | null;
+  hashscanUrl: string | null;
+  provenance: "LIVE_ONCHAIN" | "SIMULATED";
 }
 
 // The Hedera SDK's Transaction subclasses are self-referencing generics (e.g.
@@ -184,7 +184,7 @@ async function runAsOperator(tx: any): Promise<TxResult> {
   const response = await signed.execute(client);
   await response.getReceipt(client);
   const txId = response.transactionId.toString();
-  return { txId, hashscanUrl: hashscanTxUrl(txId) };
+  return { txId, hashscanUrl: hashscanTxUrl(txId), provenance: "LIVE_ONCHAIN" };
 }
 
 /** Mint fungible base units into the token treasury. The token supply key is the operator key. */

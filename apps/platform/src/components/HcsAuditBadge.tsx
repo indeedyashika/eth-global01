@@ -32,7 +32,7 @@ export function HcsAuditBadge({
         title="Verified on Hedera Consensus Service (HCS)"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
-        <span>HCS #{sequenceNumber}</span>
+        <span>HCS {sequenceNumber ? `#${sequenceNumber}` : "SIMULATED"}</span>
       </a>
     );
   }
@@ -50,7 +50,7 @@ export function HcsAuditBadge({
           </span>
         </div>
         <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-200 text-black font-mono border border-neutral-300">
-          Seq #{sequenceNumber}
+          {sequenceNumber ? `Seq #${sequenceNumber}` : "SIMULATED"}
         </span>
       </div>
 
@@ -68,14 +68,18 @@ export function HcsAuditBadge({
         </div>
         <div>
           <span className="text-neutral-500 text-[10px] block">Settlement Tx</span>
-          <a
-            href={hashscanTxUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-black font-semibold hover:underline truncate block"
-          >
-            {txId ? `${txId.slice(0, 16)}...` : "Confirmed on Testnet ↗"}
-          </a>
+          {txId === "SIMULATED_PAYMENT" || !txId ? (
+            <span className="text-black font-bold">SIMULATED</span>
+          ) : (
+            <a
+              href={hashscanTxUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-black font-semibold hover:underline truncate block"
+            >
+              {txId.slice(0, 16)}...
+            </a>
+          )}
         </div>
       </div>
     </div>

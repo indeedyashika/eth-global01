@@ -88,7 +88,7 @@ export function PropertyTokenizeModal({
         setWalletPaymentSig(signature);
         paymentProofTx = signature;
       } else {
-        paymentProofTx = `0.0.4491823@${Math.floor(Date.now() / 1000)}.000000000`;
+        paymentProofTx = `SIMULATED_PAYMENT`;
       }
 
       setVerificationStep("Step 3: Submitting signed payment proof & executing USPS DPV oracle check...");
