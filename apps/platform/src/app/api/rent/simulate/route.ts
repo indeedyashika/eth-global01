@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
       amountDeposited: amount,
       currency: "USDC (Wrapped fUSDCx)",
       calculatedFlowRate: flowRatePerSec,
+      txId: null,
+      hashscanUrl: null,
+      provenance: "SIMULATED",
       hcsAudit: hcsReceipt,
       depositTimestamp: new Date().toISOString(),
     });

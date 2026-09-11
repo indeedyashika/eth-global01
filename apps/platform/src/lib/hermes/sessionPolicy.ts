@@ -67,12 +67,28 @@ export const SESSION_KEY_EIP712_TYPES = {
   ],
 };
 
-// In-memory session registry (starts empty - NO defaultSession)
-const sessionRegistry = new Map<string, AgentSessionRecord>();
+// In-memory session registry (attached to globalThis for Next.js cross-route persistence)
+const globalForHermes = globalThis as unknown as {
+  sessionRegistry?: Map<string, AgentSessionRecord>;
+  usedGrantorNonces?: Map<string, Set<number>>;
+  executedSessionNonces?: Map<string, Set<number>>;
+};
+
+export const sessionRegistry = globalForHermes.sessionRegistry ?? new Map<string, AgentSessionRecord>();
+if (!globalForHermes.sessionRegistry) {
+  globalForHermes.sessionRegistry = sessionRegistry;
+}
 
 // Replay protection tracking
-const usedGrantorNonces = new Map<string, Set<number>>();
-const executedSessionNonces = new Map<string, Set<number>>();
+export const usedGrantorNonces = globalForHermes.usedGrantorNonces ?? new Map<string, Set<number>>();
+if (!globalForHermes.usedGrantorNonces) {
+  globalForHermes.usedGrantorNonces = usedGrantorNonces;
+}
+
+export const executedSessionNonces = globalForHermes.executedSessionNonces ?? new Map<string, Set<number>>();
+if (!globalForHermes.executedSessionNonces) {
+  globalForHermes.executedSessionNonces = executedSessionNonces;
+}
 
 export function isGrantorNonceUsed(grantor: string, nonce: number): boolean {
   const set = usedGrantorNonces.get(grantor.toLowerCase());

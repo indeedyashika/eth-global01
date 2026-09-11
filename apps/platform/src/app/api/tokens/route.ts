@@ -33,6 +33,13 @@ export async function POST(req: Request) {
       customFee: input.customFee ?? null,
     });
 
+    if (!created.tokenId) {
+      return NextResponse.json(
+        { error: "Token creation failed: no token ID returned" },
+        { status: 500 }
+      );
+    }
+
     const token = insertToken({
       id: created.tokenId,
       blockchain: "HEDERA",

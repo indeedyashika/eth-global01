@@ -8,12 +8,13 @@ interface StreamRecord {
   monthlyRentEquivUsd: number;
   startedAt: number;
   status: string;
-  txHash: string;
+  txHash: string | null;
+  provenance?: "LIVE_ONCHAIN" | "SIMULATED" | "FIXTURE";
 }
 
 const activeStreamsMap = new Map<string, StreamRecord>();
 
-// Seed a default stream for the demo
+// Seed a default stream fixture for the demo
 activeStreamsMap.set("prop_456_oak_ave:default", {
   propertyId: "prop_456_oak_ave",
   token: "0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
@@ -22,7 +23,8 @@ activeStreamsMap.set("prop_456_oak_ave:default", {
   monthlyRentEquivUsd: 3800,
   startedAt: Math.floor(Date.now() / 1000) - 7200, // started 2 hours ago
   status: "ACTIVE",
-  txHash: "0x7b58a129d21e843f5451e944738590172bf4212a",
+  txHash: null,
+  provenance: "FIXTURE",
 });
 
 export async function GET(req: NextRequest) {

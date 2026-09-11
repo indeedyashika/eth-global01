@@ -92,6 +92,7 @@ interface EventRow {
   detail: string | null;
   tx_id: string | null;
   hashscan_url: string | null;
+  provenance: string | null;
   created_at: string;
 }
 
@@ -248,6 +249,7 @@ function mapEvent(row: EventRow): EventRecord {
     detail: row.detail ? (JSON.parse(row.detail) as Record<string, unknown>) : null,
     txId: row.tx_id,
     hashscanUrl: row.hashscan_url,
+    provenance: (row.provenance as any) ?? "LIVE_ONCHAIN",
     createdAt: row.created_at,
   };
 }
@@ -309,7 +311,7 @@ export interface InsertTokenParams {
   compliance: ComplianceOptions;
   customFee: CustomFeeConfig | null;
   keys: TokenRecord["keys"];
-  createTxId: string;
+  createTxId?: string | null;
 }
 
 export function insertToken(params: InsertTokenParams): TokenRecord {
@@ -1030,11 +1032,12 @@ export function insertEvent(params: {
   detail?: Record<string, unknown> | null;
   txId?: string | null;
   hashscanUrl?: string | null;
+  provenance?: "LIVE_ONCHAIN" | "SIMULATED" | "FIXTURE" | null;
 }): void {
   getDb()
     .prepare(
-      `INSERT INTO events (token_id, account_id, type, detail, tx_id, hashscan_url)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO events (token_id, account_id, type, detail, tx_id, hashscan_url, provenance)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       params.tokenId,
@@ -1042,7 +1045,8 @@ export function insertEvent(params: {
       params.type,
       params.detail ? JSON.stringify(params.detail) : null,
       params.txId ?? null,
-      params.hashscanUrl ?? null
+      params.hashscanUrl ?? null,
+      params.provenance ?? "LIVE_ONCHAIN"
     );
 }
 

@@ -14,10 +14,10 @@ from typing import Any
 import httpx
 
 try:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp import FastMCP  # type: ignore
 except (ImportError, ModuleNotFoundError):
     try:
-        from mcp.server.mcpserver import MCPServer as FastMCP
+        from mcp.server.mcpserver import MCPServer as FastMCP  # type: ignore
     except (ImportError, ModuleNotFoundError):
         class FastMCP:  # type: ignore
             def __init__(self, name: str):
@@ -46,10 +46,9 @@ def _settle_x402_micropayment(challenge: dict[str, Any]) -> str:
     payee = challenge.get("payee", HEDERA_OPERATOR_ID)
     amount = challenge.get("amount", "50000000")
 
-    # In production/testnet with Hedera operator key, a CryptoTransferTransaction is signed.
-    # We generate a valid Hedera Transaction ID format: <payerAccountId>@<seconds>.<nanoseconds>
-    current_sec = int(time.time())
-    tx_id = f"{HEDERA_OPERATOR_ID}@{current_sec}.{int((time.time() % 1) * 1e9):09d}"
+    # Truthful settlement identifier: never spoof a real on-chain receipt (0.0.X@sec.nano)
+    # when executing in simulated mode without live Hedera transaction broadcast.
+    tx_id = f"simulated_x402_{invoice_id}"
     return tx_id
 
 

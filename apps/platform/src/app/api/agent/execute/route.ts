@@ -293,8 +293,17 @@ export async function POST(req: NextRequest) {
       console.warn("[agent execute] Could not record event in sqlite:", e);
     }
 
+    const missionStatus = steps.every(
+      (s) => s.status === "EXECUTED" && s.provenance === "LIVE_ONCHAIN"
+    )
+      ? "EXECUTED"
+      : steps.some((s) => s.status === "FAILED")
+      ? "FAILED"
+      : "SIMULATED";
+
     return NextResponse.json({
       success: true,
+      missionStatus,
       executionId,
       agentId: "hermes-agentic-operator",
       sessionId,
@@ -320,7 +329,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: err.message || "Failed to execute autonomous agent mission" },
+      {
+        success: false,
+        missionStatus: "FAILED",
+        error: err.message || "Failed to execute autonomous agent mission",
+      },
       { status: 500 }
     );
   }

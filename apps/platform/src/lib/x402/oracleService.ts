@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { logHcsAuditEvent } from "@/lib/hedera/hcsAudit";
+import { logHcsAuditEvent, type HcsAuditReceipt } from "@/lib/hedera/hcsAudit";
 
 export interface PropertyAddressInput {
   street: string;
@@ -32,14 +32,7 @@ export interface OracleVerificationResult {
   dpvConfirmation: "Y" | "N" | "D" | "S";
   standardizedAddress: PropertyAddressInput;
   addressHash: string;
-  hcsAudit: {
-    topicId: string;
-    sequenceNumber: number;
-    consensusTimestamp: string;
-    txId: string;
-    hashscanUrl: string;
-    event: string;
-  };
+  hcsAudit: HcsAuditReceipt;
   verificationTimestamp: string;
 }
 

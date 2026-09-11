@@ -448,10 +448,21 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
       {executionResult && (
         <div className="border border-neutral-300 bg-neutral-50 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-300 pb-2">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
               <span className="font-bold text-black text-xs tracking-tight">
-                Live On-Chain Evidence &amp; Execution Ledger
+                Mission Execution Ledger
+              </span>
+              <span
+                className={`px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase border ${
+                  (executionResult.missionStatus || "SIMULATED") === "EXECUTED"
+                    ? "bg-black text-white border-black"
+                    : (executionResult.missionStatus || "SIMULATED") === "FAILED"
+                    ? "bg-red-50 text-red-700 border-red-500"
+                    : "bg-neutral-100 text-black border-neutral-400"
+                }`}
+              >
+                MISSION {executionResult.missionStatus || "SIMULATED"}
               </span>
             </div>
             <span className="text-[10px] font-mono text-neutral-600 bg-white border border-neutral-200 px-1.5 py-0.5">

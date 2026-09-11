@@ -10,7 +10,7 @@ import { hashscanTxUrl } from "./format";
 export interface HcsAuditEventPayload {
   event: string;
   invoiceId?: string;
-  txId?: string;
+  txId?: string | null;
   payer?: string;
   service?: string;
   amount?: string;
