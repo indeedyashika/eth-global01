@@ -13,12 +13,15 @@ from typing import Any
 
 import httpx
 
+import importlib
+
+FastMCP: Any = None
 try:
-    from mcp.server.fastmcp import FastMCP  # type: ignore
-except (ImportError, ModuleNotFoundError):
+    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
+except Exception:
     try:
-        from mcp.server.mcpserver import MCPServer as FastMCP  # type: ignore
-    except (ImportError, ModuleNotFoundError):
+        FastMCP = importlib.import_module("mcp.server.mcpserver").MCPServer
+    except Exception:
         class FastMCP:  # type: ignore
             def __init__(self, name: str):
                 self.name = name
@@ -53,7 +56,9 @@ def _settle_x402_micropayment(challenge: dict[str, Any]) -> str:
 
 
 @mcp.tool()
-def validate_property_address(street: str, city: str, state: str, zip: str) -> dict[str, Any]:
+def validate_property_address(
+    street: str, city: str, state: str, zip: str, mode: str = "AUTO"
+) -> dict[str, Any]:
     """Validate a physical real estate property address against USPS records before tokenization.
 
     Intercepts HTTP 402 Payment Required challenges, settles the micro-fee autonomously
@@ -65,9 +70,13 @@ def validate_property_address(street: str, city: str, state: str, zip: str) -> d
         city: City name (e.g., "Miami")
         state: Two-letter US state code (e.g., "FL")
         zip: 5-digit US ZIP code (e.g., "33101")
+        mode: Verification mode ("AUTO", "LIVE_USPS", or "SIMULATED_USPS")
     """
     url = f"{BASE_URL}/api/x402/property-oracle"
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "X-Verification-Mode": mode,
+    }
     if AGENT_SECRET:
         headers["X-Tokenization-Agent-Secret"] = AGENT_SECRET
 
@@ -76,6 +85,7 @@ def validate_property_address(street: str, city: str, state: str, zip: str) -> d
         "city": city,
         "state": state,
         "zip": zip,
+        "mode": mode,
     }
 
     try:
@@ -109,17 +119,25 @@ def validate_property_address(street: str, city: str, state: str, zip: str) -> d
             raise UspsOracleError(f"Payment verification failed: {exc}") from exc
 
         if paid_response.is_error:
-            raise UspsOracleError(
-                f"Oracle returned error after payment: HTTP {paid_response.status_code}"
-            )
+            try:
+                err_body = paid_response.json()
+                err_detail = err_body.get("error", f"HTTP {paid_response.status_code}")
+            except Exception:
+                err_detail = f"HTTP {paid_response.status_code}"
+            raise UspsOracleError(f"Oracle returned error after payment: {err_detail}")
 
         try:
             return paid_response.json()
         except ValueError:
-            return {"isValid": True, "txId": tx_id}
+            return {"isValid": False, "error": "Invalid JSON response from oracle", "txId": tx_id}
 
     if response.is_error:
-        raise UspsOracleError(f"Oracle verification failed with HTTP {response.status_code}")
+        try:
+            err_body = response.json()
+            err_detail = err_body.get("error", f"HTTP {response.status_code}")
+        except Exception:
+            err_detail = f"HTTP {response.status_code}"
+        raise UspsOracleError(f"Oracle verification failed: {err_detail}")
 
     try:
         return response.json()
@@ -144,15 +162,24 @@ def get_verification_status(property_id: str) -> dict[str, Any]:
                 "propertyId": property_id,
                 "status": "UNREGISTERED",
                 "uspsVerified": False,
+                "provenance": "SIMULATED",
+            }
+        if response.is_error:
+            return {
+                "propertyId": property_id,
+                "status": "UNAVAILABLE",
+                "uspsVerified": False,
+                "provenance": "SIMULATED",
+                "error": f"HTTP {response.status_code}",
             }
         return response.json()
-    except Exception:
-        # Graceful fallback for demo
+    except Exception as exc:
         return {
             "propertyId": property_id,
-            "status": "VERIFIED",
-            "uspsVerified": True,
-            "verifiedAt": int(time.time()),
+            "status": "UNAVAILABLE",
+            "uspsVerified": False,
+            "provenance": "SIMULATED",
+            "error": f"Verification status service unavailable: {exc}",
         }
 
 
@@ -173,13 +200,25 @@ def store_verified_hash(property_id: str, address_hash: str) -> dict[str, Any]:
 
     try:
         response = httpx.request("POST", url, json=payload, headers=headers, timeout=20.0)
-        return response.json() if not response.is_error else {"success": True, "storedHash": address_hash}
-    except Exception:
+        if not response.is_error:
+            try:
+                return response.json()
+            except ValueError:
+                return {"success": True, "storedHash": address_hash, "anchored": True}
         return {
-            "success": True,
+            "success": False,
             "propertyId": property_id,
             "storedHash": address_hash,
-            "anchored": True,
+            "anchored": False,
+            "error": f"Registry service error: HTTP {response.status_code}",
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "propertyId": property_id,
+            "storedHash": address_hash,
+            "anchored": False,
+            "error": f"Failed to contact property registry service: {exc}",
         }
 
 

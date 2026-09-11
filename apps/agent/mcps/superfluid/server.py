@@ -21,12 +21,15 @@ except ImportError:
     Web3 = None  # type: ignore
     Account = None  # type: ignore
 
+import importlib
+
+FastMCP: Any = None
 try:
-    from mcp.server.fastmcp import FastMCP  # type: ignore
-except (ImportError, ModuleNotFoundError):
+    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
+except Exception:
     try:
-        from mcp.server.mcpserver import MCPServer as FastMCP  # type: ignore
-    except (ImportError, ModuleNotFoundError):
+        FastMCP = importlib.import_module("mcp.server.mcpserver").MCPServer
+    except Exception:
         class FastMCP:  # type: ignore
             def __init__(self, name: str):
                 self.name = name

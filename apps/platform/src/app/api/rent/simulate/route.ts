@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       event: "TENANT_RENT_DEPOSITED",
       propertyId,
       amount: `$${amount} USD`,
-      txId,
+      txId: txId ?? undefined,
       metadata: {
         tenant: tenantName,
         monthlyRate: amount,

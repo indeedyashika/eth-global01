@@ -107,7 +107,15 @@ export function PropertyTokenizeModal({
         throw new Error(paidData.error || "USPS Oracle verification failed");
       }
 
-      setVerificationStep("Step 4: USPS Deliverable Confirmed (DPV Code Y). HCS Receipt Logged!");
+      if (!paidData.isValid || paidData.dpvConfirmation !== "Y") {
+        throw new Error(
+          paidData.error ||
+          `USPS DPV Validation rejected (Code ${paidData.dpvConfirmation || "N"}). Physical property deliverability could not be confirmed.`
+        );
+      }
+
+      const modeLabel = paidData.verificationMode === "LIVE_USPS" ? "Live USPS Web Tools" : "Simulated USPS Demo Fixture";
+      setVerificationStep(`Step 4: USPS Deliverable Confirmed (DPV Code Y) via ${modeLabel}. HCS Receipt Logged!`);
       setVerificationResult(paidData);
     } catch (err: any) {
       if (err.code === 4001 || err.message?.includes("rejected") || err.message?.includes("denied")) {
@@ -499,10 +507,24 @@ export function PropertyTokenizeModal({
           <div className="mt-4 rounded-xl bg-neutral-50 border border-neutral-300 p-3.5 text-xs text-neutral-800 space-y-2 font-mono">
             <div className="flex items-center justify-between font-semibold text-black">
               <span>✓ USPS DPV Verified: {verificationResult.standardizedAddress?.street}</span>
-              <span className="px-2 py-0.5 rounded bg-neutral-200 text-black text-[10px] border border-neutral-300">
-                CODE {verificationResult.dpvConfirmation}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+                  verificationResult.verificationMode === "LIVE_USPS"
+                    ? "bg-green-100 text-green-900 border-green-300"
+                    : "bg-neutral-200 text-neutral-800 border-neutral-300"
+                }`}>
+                  {verificationResult.verificationMode === "LIVE_USPS" ? "LIVE USPS" : "SIMULATED USPS"}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-neutral-200 text-black text-[10px] border border-neutral-300">
+                  CODE {verificationResult.dpvConfirmation}
+                </span>
+              </div>
             </div>
+            {verificationResult.simulationNotice && (
+              <p className="text-[10px] text-neutral-500 font-mono italic">
+                Notice: {verificationResult.simulationNotice}
+              </p>
+            )}
             <p className="text-[11px] text-neutral-600 font-mono">
               Hash: {verificationResult.addressHash?.slice(0, 24)}...
             </p>

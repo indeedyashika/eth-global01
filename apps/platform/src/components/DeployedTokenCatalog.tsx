@@ -48,7 +48,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
       }
 
       // Step 2: Settle with payment proof
-      const paymentProofTx = `0.0.4491823@${Math.floor(Date.now() / 1000)}.000000000`;
+      const paymentProofTx = `demo_x402_proof_${Date.now()}`;
       const paidRes = await fetch("/api/x402/property-oracle", {
         method: "POST",
         headers: {
@@ -247,12 +247,28 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                     {oracleTestResult && (
                       <div className="text-[10px] bg-neutral-100 border border-neutral-300 p-2 space-y-1">
                         <div className="flex justify-between font-bold text-black">
-                          <span>✓ Live Oracle Verified</span>
-                          <span>DPV Code {oracleTestResult.dpvConfirmation}</span>
+                          <span>
+                            {oracleTestResult.verificationMode === "LIVE_USPS"
+                              ? "✓ Live USPS Verified"
+                              : "✓ Simulated Demo Fixture"}
+                          </span>
+                          <span className="font-mono text-[9px] px-1 rounded bg-neutral-200 border border-neutral-300">
+                            {oracleTestResult.verificationMode || "SIMULATED_USPS"}
+                          </span>
                         </div>
                         <div className="flex justify-between text-neutral-600 border-t border-neutral-200 pt-1">
-                          <span>HCS Sequence:</span>
-                          <span className="font-mono text-black font-bold">#{oracleTestResult.hcsAudit?.sequenceNumber || "65922"}</span>
+                          <span>DPV Status:</span>
+                          <span className="font-bold text-black">
+                            Code {oracleTestResult.dpvConfirmation} ({oracleTestResult.isValid ? "Deliverable" : "Rejected"})
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-neutral-600 border-t border-neutral-200 pt-1">
+                          <span>HCS Audit:</span>
+                          <span className="font-mono text-black font-bold">
+                            {oracleTestResult.hcsAudit?.sequenceNumber
+                              ? `Seq #${oracleTestResult.hcsAudit.sequenceNumber}`
+                              : oracleTestResult.hcsAudit?.provenance || "SIMULATED"}
+                          </span>
                         </div>
                       </div>
                     )}

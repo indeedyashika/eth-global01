@@ -3,7 +3,12 @@ import { handlePropertyOracleRequest, PropertyAddressInput } from "@/lib/x402/or
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as PropertyAddressInput;
+    const rawBody = await req.json();
+    const body = rawBody as PropertyAddressInput;
+    const mode =
+      rawBody?.mode ||
+      req.headers.get("x-verification-mode") ||
+      undefined;
 
     const paymentTx =
       req.headers.get("x-payment-tx") ||
@@ -12,7 +17,7 @@ export async function POST(req: NextRequest) {
     const invoiceId = req.headers.get("x-payment-invoice") || undefined;
 
     const proof = paymentTx ? { paymentTx, invoiceId } : undefined;
-    const result = await handlePropertyOracleRequest(body, proof);
+    const result = await handlePropertyOracleRequest(body, proof, { mode });
 
     if (result.status === 402 && result.x402) {
       return NextResponse.json(result, {
@@ -26,6 +31,10 @@ export async function POST(req: NextRequest) {
           "X-402-Invoice": result.x402.invoiceId,
         },
       });
+    }
+
+    if (result.status === 503) {
+      return NextResponse.json({ error: result.error, status: 503 }, { status: 503 });
     }
 
     if (result.status === 400) {

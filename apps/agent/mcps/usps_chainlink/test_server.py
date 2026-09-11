@@ -65,5 +65,56 @@ class TestUspsChainlinkMcp(unittest.TestCase):
         self.assertIn("hcsAudit", result)
         self.assertEqual(mock_request.call_count, 2)
 
+    @patch("httpx.request")
+    def test_validate_address_mode_propagation(self, mock_request):
+        """Verify verification mode is properly propagated to the oracle service."""
+        from server import validate_property_address
+
+        mock_res = MagicMock()
+        mock_res.status_code = 200
+        mock_res.is_error = False
+        mock_res.json.return_value = {
+            "isValid": False,
+            "dpvConfirmation": "N",
+            "verificationMode": "SIMULATED_USPS",
+            "provenance": "SIMULATED",
+            "error": "Address not in simulated demo fixture catalog.",
+        }
+        mock_request.return_value = mock_res
+
+        result = validate_property_address("123 Main St", "Springfield", "IL", "62701", mode="SIMULATED_USPS")
+        self.assertFalse(result.get("isValid"))
+        self.assertEqual(result.get("dpvConfirmation"), "N")
+        self.assertEqual(result.get("verificationMode"), "SIMULATED_USPS")
+
+        # Check that mode was sent in payload and headers
+        call_kwargs = mock_request.call_args[1]
+        self.assertEqual(call_kwargs["json"]["mode"], "SIMULATED_USPS")
+        self.assertEqual(call_kwargs["headers"]["X-Verification-Mode"], "SIMULATED_USPS")
+
+    @patch("httpx.request")
+    def test_get_verification_status_offline_never_fakes_true(self, mock_request):
+        """Verify get_verification_status never falsely claims uspsVerified=True when offline."""
+        from server import get_verification_status
+        import httpx
+
+        mock_request.side_effect = httpx.ConnectError("Connection refused")
+        res = get_verification_status("prop_test_123")
+        self.assertEqual(res["status"], "UNAVAILABLE")
+        self.assertFalse(res["uspsVerified"])
+        self.assertEqual(res["provenance"], "SIMULATED")
+
+    @patch("httpx.request")
+    def test_store_verified_hash_offline_never_fakes_anchored(self, mock_request):
+        """Verify store_verified_hash never falsely claims anchored=True when offline."""
+        from server import store_verified_hash
+        import httpx
+
+        mock_request.side_effect = httpx.ConnectError("Connection refused")
+        res = store_verified_hash("prop_test_123", "0x1234567890abcdef")
+        self.assertFalse(res["success"])
+        self.assertFalse(res["anchored"])
+
+
 if __name__ == "__main__":
     unittest.main()

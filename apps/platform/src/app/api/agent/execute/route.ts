@@ -214,33 +214,52 @@ export async function POST(req: NextRequest) {
     const executionId = `exec_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
     const steps: any[] = [];
 
-    // Step A: Autonomous Hedera x402 Micropayment Settlement
+    // Step A: Autonomous Hedera x402 Micropayment Settlement & USPS Validation
+    const { handlePropertyOracleRequest } = await import("@/lib/x402/oracleService");
+    const oracleResult = await handlePropertyOracleRequest(
+      {
+        street: property.street,
+        city: property.city,
+        state: property.state,
+        zip: property.zip,
+      },
+      { paymentTx: `session_x402_${sessionId.slice(0, 16)}`, invoiceId: `inv_${executionId}` }
+    );
+
+    const isOracleSuccess = oracleResult.status === 200 && oracleResult.data?.isValid === true;
+    const oracleData = oracleResult.data;
+
     steps.push({
       stepNumber: 1,
-      name: "Autonomous x402 Micropayment Settlement",
+      name: "Autonomous x402 Micropayment Settlement & USPS Validation",
       network: "Hedera Testnet (x402 Rail)",
-      status: "SIMULATED",
-      provenance: "SIMULATED",
+      status: isOracleSuccess ? "SIMULATED" : "FAILED",
+      provenance: oracleData?.provenance ?? "SIMULATED",
       txId: null,
       explorerUrl: null,
-      detail: "Settled 0.5 HBAR micropayment via Blocky402 facilitator under delegated Session Key allowance.",
+      detail: isOracleSuccess
+        ? `Settled 0.5 HBAR micropayment via Blocky402. USPS verified (${oracleData?.verificationMode}: Code ${oracleData?.dpvConfirmation}).`
+        : `USPS Oracle rejected address: ${oracleData?.error || oracleResult.error || "Address not deliverable"}.`,
       timestamp: new Date().toISOString(),
     });
 
     // Step B: Hedera Consensus Service (HCS) Verifiable Audit Logging
-    const addressHash = `0x${crypto.createHash("sha256").update(`${property.street}|${property.city}|${property.state}|${property.zip}`).digest("hex")}`;
+    const addressHash = oracleData?.addressHash ?? `0x${crypto.createHash("sha256").update(`${property.street}|${property.city}|${property.state}|${property.zip}`).digest("hex")}`;
+    const hcsAudit = oracleData?.hcsAudit;
     
     steps.push({
       stepNumber: 2,
       name: "Hedera Consensus Service (HCS) Audit Anchor",
-      network: "Hedera Testnet (HCS Topic 0.0.4491823)",
-      status: "SIMULATED",
-      provenance: "SIMULATED",
-      txId: null,
-      sequenceNumber: null,
-      explorerUrl: null,
-      detail: `Consensus sequence anchored on HCS Topic 0.0.4491823.`,
-      timestamp: new Date().toISOString(),
+      network: `Hedera Testnet (HCS Topic ${hcsAudit?.topicId ?? "0.0.4491823"})`,
+      status: hcsAudit?.provenance === "LIVE_ONCHAIN" ? "EXECUTED" : "SIMULATED",
+      provenance: hcsAudit?.provenance ?? "SIMULATED",
+      txId: hcsAudit?.txId ?? null,
+      sequenceNumber: hcsAudit?.sequenceNumber ?? null,
+      explorerUrl: hcsAudit?.hashscanUrl ?? null,
+      detail: hcsAudit?.sequenceNumber
+        ? `Consensus sequence #${hcsAudit.sequenceNumber} anchored on HCS Topic ${hcsAudit.topicId}.`
+        : `Consensus sequence anchored on HCS Topic ${hcsAudit?.topicId ?? "0.0.4491823"}.`,
+      timestamp: hcsAudit?.consensusTimestamp ?? new Date().toISOString(),
     });
 
     // Step C: The Graph Dynamic Shareholder Discovery
