@@ -13,24 +13,37 @@ export async function POST(req: NextRequest) {
     const paymentTx =
       req.headers.get("x-payment-tx") ||
       req.headers.get("x-payment") ||
-      req.headers.get("authorization")?.replace(/^x402\s+/i, "");
-    const invoiceId = req.headers.get("x-payment-invoice") || undefined;
+      req.headers.get("authorization")?.replace(/^x402\s+/i, "") ||
+      rawBody?.paymentTx ||
+      undefined;
+    const invoiceId =
+      req.headers.get("x-payment-invoice") ||
+      rawBody?.invoiceId ||
+      undefined;
+    const provenance =
+      (req.headers.get("x-payment-provenance") || rawBody?.provenance) as "LIVE_ONCHAIN" | "SIMULATED" | undefined;
 
-    const proof = paymentTx ? { paymentTx, invoiceId } : undefined;
+    const proof =
+      paymentTx !== undefined || invoiceId !== undefined || provenance !== undefined
+        ? { paymentTx: paymentTx || null, invoiceId, provenance }
+        : undefined;
+
     const result = await handlePropertyOracleRequest(body, proof, { mode });
 
-    if (result.status === 402 && result.x402) {
-      return NextResponse.json(result, {
-        status: 402,
-        headers: {
-          "X-402-Version": result.x402.version,
-          "X-402-Facilitator": result.x402.facilitator,
-          "X-402-Network": result.x402.network,
-          "X-402-Payee": result.x402.payee,
-          "X-402-Amount": result.x402.amount,
-          "X-402-Invoice": result.x402.invoiceId,
-        },
-      });
+    if (result.status === 402) {
+      const headers: Record<string, string> = {};
+      if (result.x402) {
+        headers["X-402-Version"] = result.x402.version;
+        headers["X-402-Facilitator"] = result.x402.facilitator;
+        headers["X-402-Network"] = result.x402.network;
+        headers["X-402-Payee"] = result.x402.payee;
+        headers["X-402-Amount"] = result.x402.amount;
+        headers["X-402-Invoice"] = result.x402.invoiceId;
+      }
+      return NextResponse.json(
+        { error: result.error || "Payment Required", status: 402, x402: result.x402 },
+        { status: 402, headers }
+      );
     }
 
     if (result.status === 503) {

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { logHcsAuditEvent, type HcsAuditReceipt } from "../hedera/hcsAudit";
+import { verifyHederaPaymentTransaction } from "../hedera/mirrorNode";
 
 export type VerificationMode = "LIVE_USPS" | "SIMULATED_USPS";
 
@@ -11,8 +12,9 @@ export interface PropertyAddressInput {
 }
 
 export interface PaymentProof {
-  paymentTx?: string;
+  paymentTx?: string | null;
   invoiceId?: string;
+  provenance?: "LIVE_ONCHAIN" | "SIMULATED";
 }
 
 export interface OracleRequestOptions {
@@ -33,11 +35,104 @@ export interface X402Challenge {
   instructions: string;
 }
 
+export interface InvoiceRecord {
+  invoiceId: string;
+  amountTinybars: string;
+  displayAmount: string;
+  payee: string;
+  createdAt: number;
+  status: "UNPAID" | "CONFIRMED" | "SIMULATED";
+  paymentTxId: string | null;
+  provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  verifiedAmountTinybars?: string;
+  settledAt?: number;
+}
+
+declare global {
+  var __x402ActiveInvoices: Map<string, InvoiceRecord> | undefined;
+}
+
+export function getActiveInvoices(): Map<string, InvoiceRecord> {
+  if (!globalThis.__x402ActiveInvoices) {
+    globalThis.__x402ActiveInvoices = new Map<string, InvoiceRecord>();
+  }
+  return globalThis.__x402ActiveInvoices;
+}
+
+export function getInvoice(invoiceId: string): InvoiceRecord | undefined {
+  return getActiveInvoices().get(invoiceId);
+}
+
+export function createX402Invoice(payee?: string, amountTinybars = "50000000"): X402Challenge {
+  const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  const payeeAccount = payee || process.env.HEDERA_OPERATOR_ID || "0.0.4491823";
+  getActiveInvoices().set(invoiceId, {
+    invoiceId,
+    amountTinybars,
+    displayAmount: "0.5 HBAR",
+    payee: payeeAccount,
+    createdAt: Date.now(),
+    status: "UNPAID",
+    paymentTxId: null,
+    provenance: "SIMULATED",
+  });
+
+  return {
+    version: "1.0",
+    network: "hedera-testnet",
+    facilitator: "blocky402",
+    payee: payeeAccount,
+    amount: amountTinybars,
+    unit: "tinybar",
+    displayAmount: "0.5 HBAR",
+    token: "0.0.0",
+    invoiceId,
+    auditTopicId: process.env.HEDERA_AUDIT_TOPIC_ID || "0.0.4491823",
+    instructions:
+      "Submit 0.5 HBAR payment to payee on Hedera Testnet with invoiceId in transaction memo, then retry with X-Payment-Tx and X-Payment-Invoice headers.",
+  };
+}
+
+export function recordInvoiceSettlement(
+  invoiceId: string,
+  txId: string | null,
+  provenance: "LIVE_ONCHAIN" | "SIMULATED",
+  amountTinybars?: string
+): InvoiceRecord {
+  const invoices = getActiveInvoices();
+  const existing = invoices.get(invoiceId);
+  if (existing) {
+    existing.status = provenance === "LIVE_ONCHAIN" ? "CONFIRMED" : "SIMULATED";
+    existing.paymentTxId = txId;
+    existing.provenance = provenance;
+    existing.verifiedAmountTinybars = amountTinybars || existing.amountTinybars;
+    existing.settledAt = Date.now();
+    return existing;
+  }
+
+  const record: InvoiceRecord = {
+    invoiceId,
+    amountTinybars: amountTinybars || "50000000",
+    displayAmount: "0.5 HBAR",
+    payee: process.env.HEDERA_OPERATOR_ID || "0.0.4491823",
+    createdAt: Date.now(),
+    status: provenance === "LIVE_ONCHAIN" ? "CONFIRMED" : "SIMULATED",
+    paymentTxId: txId,
+    provenance,
+    verifiedAmountTinybars: amountTinybars || "50000000",
+    settledAt: Date.now(),
+  };
+  invoices.set(invoiceId, record);
+  return record;
+}
+
 export interface OracleVerificationResult {
   isValid: boolean;
   dpvConfirmation: "Y" | "N" | "D" | "S";
   verificationMode: VerificationMode;
   provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  paymentProvenance: "LIVE_ONCHAIN" | "SIMULATED";
+  paymentTxId: string | null;
   isSimulated: boolean;
   simulationNotice?: string;
   error?: string;
@@ -53,8 +148,6 @@ export interface OracleResponse {
   x402?: X402Challenge;
   data?: OracleVerificationResult;
 }
-
-const activeInvoices = new Map<string, { createdAt: number; amount: string }>();
 
 // Whitelisted deterministic demo fixtures for SIMULATED_USPS mode
 export const DEMO_PROPERTY_FIXTURES: Array<{
@@ -285,27 +378,87 @@ export async function handlePropertyOracleRequest(
     };
   }
 
-  // Step 1: If no payment proof provided, return 402 Payment Required challenge
-  if (!proof || !proof.paymentTx) {
-    const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-    activeInvoices.set(invoiceId, { createdAt: Date.now(), amount: "50000000" });
+  // Step 1: Check for payment proof and invoice
+  const invoiceId = proof?.invoiceId;
+  const paymentTx = proof?.paymentTx ?? null;
+  const requestedProvenance = proof?.provenance;
 
+  if (!proof || !invoiceId) {
+    const challenge = createX402Invoice();
     return {
       status: 402,
       error: "Payment Required",
+      x402: challenge,
+    };
+  }
+
+  const invoice = getInvoice(invoiceId);
+  if (!invoice) {
+    return {
+      status: 402,
+      error: "Payment Required: Unknown or expired invoice ID. Request a new 402 challenge.",
+    };
+  }
+
+  // Step 2: Server-side Payment Verification
+  // Requirement 4: Verify the payment amount server-side.
+  // Requirement 5: Do not trust the client to claim that payment was completed.
+  // Requirement 6: Do not mark the oracle request as paid until settlement is actually confirmed.
+  let effectivePaymentTxId: string | null = null;
+  let effectivePaymentProvenance: "LIVE_ONCHAIN" | "SIMULATED" = "SIMULATED";
+
+  if (invoice.status === "CONFIRMED") {
+    // Already confirmed by server-side settlement engine (/api/x402/settle)
+    effectivePaymentTxId = invoice.paymentTxId;
+    effectivePaymentProvenance = "LIVE_ONCHAIN";
+  } else if (invoice.status === "SIMULATED") {
+    // Explicit simulation mode confirmed server-side via /api/x402/settle: enforce txId must be null
+    // Requirement 3: If actual settlement cannot be performed: return SIMULATED, txId must be null, do not generate a fake transaction ID.
+    effectivePaymentTxId = null;
+    effectivePaymentProvenance = "SIMULATED";
+  } else if (paymentTx) {
+    // Client claims live on-chain payment with external transaction ID
+    // Requirement 5: Do not trust the client to claim that payment was completed.
+    // Verify against Hedera Mirror Node
+    const verifyResult = await verifyHederaPaymentTransaction({
+      txId: paymentTx,
+      expectedPayee: invoice.payee,
+      minimumAmountTinybars: BigInt(invoice.amountTinybars),
+    });
+
+    if (!verifyResult.verified) {
+      return {
+        status: 402,
+        error: `Payment verification failed: ${verifyResult.error || "Transaction not confirmed on Hedera Testnet"}`,
+      };
+    }
+
+    effectivePaymentTxId = paymentTx;
+    effectivePaymentProvenance = "LIVE_ONCHAIN";
+    recordInvoiceSettlement(
+      invoiceId,
+      paymentTx,
+      "LIVE_ONCHAIN",
+      verifyResult.actualAmountTinybars?.toString()
+    );
+  } else {
+    // Invoice exists but is UNPAID and no valid payment proof was provided
+    return {
+      status: 402,
+      error: "Payment Required: Invoice has not been settled.",
       x402: {
         version: "1.0",
         network: "hedera-testnet",
         facilitator: "blocky402",
-        payee: process.env.HEDERA_OPERATOR_ID || "0.0.4491823",
-        amount: "50000000",
+        payee: invoice.payee,
+        amount: invoice.amountTinybars,
         unit: "tinybar",
-        displayAmount: "0.5 HBAR",
+        displayAmount: invoice.displayAmount,
         token: "0.0.0",
-        invoiceId,
+        invoiceId: invoice.invoiceId,
         auditTopicId: process.env.HEDERA_AUDIT_TOPIC_ID || "0.0.4491823",
         instructions:
-          "Submit 0.5 HBAR payment to payee on Hedera Testnet with invoiceId in transaction memo, then retry with X-Payment-Tx header.",
+          "Submit 0.5 HBAR payment to payee on Hedera Testnet with invoiceId in transaction memo, then retry with X-Payment-Tx and X-Payment-Invoice headers.",
       },
     };
   }
@@ -401,7 +554,7 @@ export async function handlePropertyOracleRequest(
     event: "X402_PAYMENT_VERIFIED",
     propertyId: addressHash,
     addressHash,
-    txId: proof.paymentTx,
+    txId: effectivePaymentTxId,
     payer: proof.invoiceId,
     amount: "0.5 HBAR",
     metadata: {
@@ -410,10 +563,11 @@ export async function handlePropertyOracleRequest(
       isValid,
       verificationMode: effectiveMode,
       invoiceId: proof.invoiceId,
+      paymentProvenance: effectivePaymentProvenance,
     },
   });
 
-  const provenance = effectiveMode === "LIVE_USPS" && hcsAudit.provenance === "LIVE_ONCHAIN"
+  const provenance = effectiveMode === "LIVE_USPS" && effectivePaymentProvenance === "LIVE_ONCHAIN" && hcsAudit.provenance === "LIVE_ONCHAIN"
     ? "LIVE_ONCHAIN"
     : "SIMULATED";
 
@@ -422,7 +576,9 @@ export async function handlePropertyOracleRequest(
     dpvConfirmation,
     verificationMode: effectiveMode,
     provenance,
-    isSimulated: effectiveMode === "SIMULATED_USPS",
+    paymentProvenance: effectivePaymentProvenance,
+    paymentTxId: effectivePaymentTxId,
+    isSimulated: effectiveMode === "SIMULATED_USPS" || effectivePaymentProvenance === "SIMULATED",
     simulationNotice,
     error: verificationError,
     standardizedAddress,

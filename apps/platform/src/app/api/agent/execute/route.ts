@@ -215,7 +215,23 @@ export async function POST(req: NextRequest) {
     const steps: any[] = [];
 
     // Step A: Autonomous Hedera x402 Micropayment Settlement & USPS Validation
-    const { handlePropertyOracleRequest } = await import("@/lib/x402/oracleService");
+    const { createX402Invoice, handlePropertyOracleRequest, recordInvoiceSettlement } = await import("@/lib/x402/oracleService");
+    const { executeX402Payment } = await import("@/lib/x402/settleService");
+
+    const invoice = createX402Invoice();
+    const settlement = await executeX402Payment({
+      invoiceId: invoice.invoiceId,
+      payee: invoice.payee,
+      amountTinybars: invoice.amountTinybars,
+    });
+
+    recordInvoiceSettlement(
+      invoice.invoiceId,
+      settlement.txId,
+      settlement.provenance,
+      settlement.amountTinybars
+    );
+
     const oracleResult = await handlePropertyOracleRequest(
       {
         street: property.street,
@@ -223,7 +239,11 @@ export async function POST(req: NextRequest) {
         state: property.state,
         zip: property.zip,
       },
-      { paymentTx: `session_x402_${sessionId.slice(0, 16)}`, invoiceId: `inv_${executionId}` }
+      {
+        invoiceId: invoice.invoiceId,
+        paymentTx: settlement.txId,
+        provenance: settlement.provenance,
+      }
     );
 
     const isOracleSuccess = oracleResult.status === 200 && oracleResult.data?.isValid === true;
@@ -233,12 +253,16 @@ export async function POST(req: NextRequest) {
       stepNumber: 1,
       name: "Autonomous x402 Micropayment Settlement & USPS Validation",
       network: "Hedera Testnet (x402 Rail)",
-      status: isOracleSuccess ? "SIMULATED" : "FAILED",
-      provenance: oracleData?.provenance ?? "SIMULATED",
-      txId: null,
-      explorerUrl: null,
+      status: !isOracleSuccess
+        ? "FAILED"
+        : settlement.provenance === "LIVE_ONCHAIN"
+        ? "EXECUTED"
+        : "SIMULATED",
+      provenance: oracleData?.provenance ?? settlement.provenance,
+      txId: settlement.txId,
+      explorerUrl: settlement.hashscanUrl,
       detail: isOracleSuccess
-        ? `Settled 0.5 HBAR micropayment via Blocky402. USPS verified (${oracleData?.verificationMode}: Code ${oracleData?.dpvConfirmation}).`
+        ? `Settled 0.5 HBAR micropayment via Blocky402 (${settlement.provenance}). USPS verified (${oracleData?.verificationMode}: Code ${oracleData?.dpvConfirmation}).`
         : `USPS Oracle rejected address: ${oracleData?.error || oracleResult.error || "Address not deliverable"}.`,
       timestamp: new Date().toISOString(),
     });

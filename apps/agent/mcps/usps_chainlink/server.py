@@ -43,16 +43,104 @@ class UspsOracleError(RuntimeError):
     """Expose safe error messages to Hermes without breaking agent context."""
 
 
-def _settle_x402_micropayment(challenge: dict[str, Any]) -> str:
-    """Autonomously signs and settles a 0.5 HBAR micropayment on Hedera Testnet."""
+def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = False) -> dict[str, Any]:
+    """Autonomously signs and settles a 0.5 HBAR micropayment on Hedera Testnet.
+
+    Returns structured dict with:
+        txId: Optional[str] - The real transaction ID if confirmed live on-chain, or None if simulated.
+        provenance: str - "LIVE_ONCHAIN" or "SIMULATED"
+        status: str - "CONFIRMED", "SIMULATED", or "FAILED"
+        invoiceId: str - The invoice ID being settled
+    """
     invoice_id = challenge.get("invoiceId", "inv_unknown")
     payee = challenge.get("payee", HEDERA_OPERATOR_ID)
     amount = challenge.get("amount", "50000000")
 
-    # Truthful settlement identifier: never spoof a real on-chain receipt (0.0.X@sec.nano)
-    # when executing in simulated mode without live Hedera transaction broadcast.
-    tx_id = f"simulated_x402_{invoice_id}"
-    return tx_id
+    # Step 1: Check if direct Python Hedera SDK is available and operator key configured
+    operator_key = os.environ.get("HEDERA_OPERATOR_KEY", "")
+    operator_id = os.environ.get("HEDERA_OPERATOR_ID", "")
+
+    hiero_sdk = None
+    try:
+        import hiero_sdk_python as hiero_sdk  # type: ignore
+    except ImportError:
+        try:
+            import hedera as hiero_sdk  # type: ignore
+        except ImportError:
+            hiero_sdk = None
+
+    if not simulation and hiero_sdk is not None and operator_key and operator_id:
+        try:
+            # Construct actual CryptoTransferTransaction in Python
+            client = hiero_sdk.Client.for_testnet()
+            client.set_operator(
+                hiero_sdk.AccountId.from_string(operator_id),
+                hiero_sdk.PrivateKey.from_string(operator_key),
+            )
+            transfer_tx = (
+                hiero_sdk.TransferTransaction()
+                .add_hbar_transfer(
+                    hiero_sdk.AccountId.from_string(operator_id),
+                    hiero_sdk.Hbar.from_tinybars(-int(amount)),
+                )
+                .add_hbar_transfer(
+                    hiero_sdk.AccountId.from_string(payee),
+                    hiero_sdk.Hbar.from_tinybars(int(amount)),
+                )
+                .set_transaction_memo(f"x402:{invoice_id}")
+            )
+            response = transfer_tx.execute(client)
+            receipt = response.get_receipt(client)
+            if str(receipt.status) == "SUCCESS":
+                tx_id = str(response.transaction_id)
+                return {
+                    "txId": tx_id,
+                    "provenance": "LIVE_ONCHAIN",
+                    "status": "CONFIRMED",
+                    "invoiceId": invoice_id,
+                }
+        except Exception as exc:
+            raise UspsOracleError(f"Direct Hedera CryptoTransferTransaction failed: {exc}") from exc
+
+    # Step 2: Use tokenization platform settlement endpoint (/api/x402/settle)
+    settle_url = f"{BASE_URL}/api/x402/settle"
+    headers = {"Content-Type": "application/json"}
+    if AGENT_SECRET:
+        headers["X-Tokenization-Agent-Secret"] = AGENT_SECRET
+
+    settle_payload = {
+        "invoiceId": invoice_id,
+        "payee": payee,
+        "amount": str(amount),
+        "simulation": simulation,
+    }
+
+    try:
+        settle_res = httpx.request("POST", settle_url, json=settle_payload, headers=headers, timeout=25.0)
+        if settle_res.status_code == 200:
+            settle_data = settle_res.json()
+            return {
+                "txId": settle_data.get("txId"),  # will be None in simulation!
+                "provenance": settle_data.get("provenance", "SIMULATED"),
+                "status": settle_data.get("status", "SIMULATED"),
+                "invoiceId": invoice_id,
+            }
+        elif settle_res.is_error:
+            try:
+                err_detail = settle_res.json().get("error", f"HTTP {settle_res.status_code}")
+            except Exception:
+                err_detail = f"HTTP {settle_res.status_code}"
+            raise UspsOracleError(f"Settlement failed ({err_detail})")
+    except httpx.HTTPError as exc:
+        raise UspsOracleError(f"Settlement service unreachable at {settle_url}: {exc}") from exc
+
+    # If actual settlement cannot be performed: return SIMULATED, txId must be None
+    return {
+        "txId": None,
+        "provenance": "SIMULATED",
+        "status": "SIMULATED",
+        "invoiceId": invoice_id,
+    }
 
 
 @mcp.tool()
@@ -103,20 +191,29 @@ def validate_property_address(
         x402_data = body.get("x402", {})
         invoice_id = x402_data.get("invoiceId", "")
 
-        # Autonomously settle micropayment
-        tx_id = _settle_x402_micropayment(x402_data)
+        # Autonomously settle micropayment with real CryptoTransfer or explicit simulation
+        is_simulation = mode == "SIMULATED_USPS"
+        settlement = _settle_x402_micropayment(x402_data, simulation=is_simulation)
 
         # Retry with payment authorization proof
         paid_headers = dict(headers)
-        paid_headers["X-Payment-Tx"] = tx_id
+        if settlement.get("txId"):
+            paid_headers["X-Payment-Tx"] = settlement["txId"]
         paid_headers["X-Payment-Invoice"] = invoice_id
+        paid_headers["X-Payment-Provenance"] = settlement.get("provenance", "SIMULATED")
+
+        # Also supply in payload for robust cross-environment delivery
+        paid_payload = dict(payload)
+        paid_payload["invoiceId"] = invoice_id
+        paid_payload["paymentTx"] = settlement.get("txId")
+        paid_payload["provenance"] = settlement.get("provenance", "SIMULATED")
 
         try:
             paid_response = httpx.request(
-                "POST", url, json=payload, headers=paid_headers, timeout=25.0
+                "POST", url, json=paid_payload, headers=paid_headers, timeout=25.0
             )
         except httpx.HTTPError as exc:
-            raise UspsOracleError(f"Payment verification failed: {exc}") from exc
+            raise UspsOracleError(f"Payment verification request failed: {exc}") from exc
 
         if paid_response.is_error:
             try:
@@ -129,7 +226,11 @@ def validate_property_address(
         try:
             return paid_response.json()
         except ValueError:
-            return {"isValid": False, "error": "Invalid JSON response from oracle", "txId": tx_id}
+            return {
+                "isValid": False,
+                "error": "Invalid JSON response from oracle",
+                "txId": settlement.get("txId"),
+            }
 
     if response.is_error:
         try:
