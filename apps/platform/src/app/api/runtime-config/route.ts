@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { contractDeploymentStatus, requireLiveContractDeployments } from "@/lib/evm/contracts";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,11 @@ function hederaNetwork(): "mainnet" | "testnet" | "previewnet" {
 }
 
 export function GET() {
+  try {
+    requireLiveContractDeployments();
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid contract configuration" }, { status: 503 });
+  }
   return NextResponse.json(
     {
       network: hederaNetwork(),
@@ -24,6 +30,7 @@ export function GET() {
         process.env.TOKENIZATION_APP_URL ??
         process.env.NEXT_PUBLIC_APP_URL ??
         "",
+      contracts: contractDeploymentStatus(),
     },
     {
       headers: {

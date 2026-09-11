@@ -188,7 +188,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
               </div>
               <div className="text-[11px] text-neutral-600 flex items-center justify-between pt-2 border-t border-neutral-200">
                 <span>Distribution Rail:</span>
-                <span className="text-black font-bold">YieldVault.sol Reserve</span>
+                <span className="text-black font-bold">YieldVault.sol artifact · simulated</span>
               </div>
             </div>
 

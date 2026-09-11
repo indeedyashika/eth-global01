@@ -124,8 +124,8 @@ export function RentSimulatorPanel({
         </div>
       ) : (
         <div className="text-[10px] text-neutral-500 border-t border-neutral-200 pt-2 flex justify-between">
-          <span>Target Contract:</span>
-          <span className="text-black font-bold">Base Sepolia YieldVault</span>
+          <span>Settlement artifact:</span>
+          <span className="text-black font-bold">YieldVault · SIMULATED (not deployed)</span>
         </div>
       )}
     </div>
