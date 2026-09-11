@@ -31,7 +31,7 @@ export default function TokenWorkspace({
 }) {
   const evm = useEvmWallet();
   const hedera = useWallet();
-  const activeAccountId = evm.accountId || hedera.accountId || "0x28a8746e75304c0780e011bed21c72cd78cd535e";
+  const activeAccountId = evm.accountId || hedera.accountId || "";
 
   const [activeTab, setActiveTab] = useState<"overview" | "captable" | "worldid" | "ledger">("overview");
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
@@ -68,6 +68,7 @@ export default function TokenWorkspace({
   const [isStreaming, setIsStreaming] = useState<boolean>(true);
   const [isClaiming, setIsClaiming] = useState<boolean>(false);
   const [claimReceipt, setClaimReceipt] = useState<{ txId: string; hashscanUrl: string; amount: number } | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   const startRef = useRef<number>(Date.now());
   const initialRef = useRef<number>(14.8251);
@@ -85,18 +86,24 @@ export default function TokenWorkspace({
   // Claim yield via real API endpoint
   const handleClaimYield = async () => {
     setIsClaiming(true);
+    setClaimError(null);
     try {
+      if (!activeAccountId) throw new Error("Connect the investor wallet and authorize a session before claiming.");
+      const sessionRes = await fetch(`/api/agent/session?grantor=${encodeURIComponent(activeAccountId)}`);
+      const sessionData = await sessionRes.json().catch(() => ({}));
+      if (!sessionData.session?.sessionId) {
+        throw new Error("No active signed session. Open the Safety Cockpit to authorize one first.");
+      }
       const res = await fetch("/api/yield/claim", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({
-          propertyId: token.id,
-          accountId: activeAccountId,
-          amount: accruedYield,
+          sessionId: sessionData.session.sessionId,
+          tokenId: token.id,
         }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.provenance === "LIVE_ONCHAIN" && data.txId) {
         setClaimReceipt({
           txId: data.txId,
           hashscanUrl: data.hashscanUrl,
@@ -106,9 +113,12 @@ export default function TokenWorkspace({
         startRef.current = Date.now();
         setAccruedYield(0);
         setTimeout(() => setClaimReceipt(null), 8000);
+      } else {
+        setClaimError(data.error || "Yield was not settled. No funds were transferred.");
       }
     } catch (err) {
       console.error("Claim error:", err);
+      setClaimError(err instanceof Error ? err.message : "Yield claim failed.");
     } finally {
       setIsClaiming(false);
     }
@@ -290,6 +300,11 @@ export default function TokenWorkspace({
                   >
                     Tx: {claimReceipt.txId} ↗
                   </a>
+                </div>
+              )}
+              {claimError && (
+                <div className="mt-2 text-xs text-amber-800" role="alert">
+                  Claim not settled: {claimError}
                 </div>
               )}
             </div>

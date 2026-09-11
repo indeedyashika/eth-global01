@@ -27,6 +27,7 @@ export function InvestorStreamDashboard({
   const [isClaiming, setIsClaiming] = useState<boolean>(false);
   const [claimSuccess, setClaimSuccess] = useState<boolean>(false);
   const [claimTx, setClaimTx] = useState<{ txId: string; hashscanUrl: string; amount: number } | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   const startRef = useRef<number>(Date.now());
   const initialRef = useRef<number>(initialBalance);
@@ -45,36 +46,9 @@ export function InvestorStreamDashboard({
   }, [isStreaming, flowRatePerSec]);
 
   const handleClaim = async () => {
-    setIsClaiming(true);
-    try {
-      const res = await fetch("/api/yield/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId: "0.0.4491823",
-          accountId: "0x28a8746e75304c0780e011bed21c72cd78cd535e",
-          amount: currentYield,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setClaimTx({
-          txId: data.txId,
-          hashscanUrl: data.hashscanUrl,
-          amount: data.amountClaimed,
-        });
-        setClaimSuccess(true);
-        initialRef.current = 0;
-        startRef.current = Date.now();
-        setCurrentYield(0);
-        if (onClaim) onClaim();
-        setTimeout(() => setClaimSuccess(false), 7000);
-      }
-    } catch (e) {
-      console.error("Claim error:", e);
-    } finally {
-      setIsClaiming(false);
-    }
+    // This standalone dashboard has no authenticated session or server-issued
+    // claim authorization, so it must not submit its animated counter as money.
+    setClaimError("Claims require an authenticated investor session and live settlement. No funds were transferred.");
   };
 
   return (
@@ -124,7 +98,7 @@ export function InvestorStreamDashboard({
           disabled={isClaiming || currentYield <= 0.0001}
           className="flex-1 bg-black text-white px-3 py-2 text-xs font-bold border border-black hover:bg-neutral-800 disabled:opacity-40 transition cursor-pointer"
         >
-          {isClaiming ? "Settling..." : `Claim Yield ($${currentYield.toFixed(2)})`}
+          {isClaiming ? "Settling..." : "Claims unavailable in this demo"}
         </button>
         <button
           onClick={() => setIsStreaming(!isStreaming)}
@@ -154,6 +128,7 @@ export function InvestorStreamDashboard({
           )}
         </div>
       )}
+      {claimError && <div className="text-[10px] text-amber-800" role="alert">{claimError}</div>}
     </div>
   );
 }

@@ -137,12 +137,15 @@ async function runTests() {
     propertyId: "0.0.4491823",
     accountId: "0x28a8746e75304c0780e011bed21c72cd78cd535e",
     amount: 14.8251,
+    claimableAmount: 999999,
+    txId: "0.0.99999@1741234567.890000000",
   });
-  assert.strictEqual(claimRes.status, 200, "Yield claim must return 200");
+  assert.strictEqual(claimRes.status, 401, "Unauthenticated yield claim must be rejected");
+  assert.strictEqual(claimRes.data?.success, false, "Unauthenticated claim cannot succeed");
   assert.strictEqual(claimRes.data?.txId, null, "Yield claim txId must be null");
   assert.strictEqual(claimRes.data?.hashscanUrl, null, "Yield claim hashscanUrl must be null");
-  assert.strictEqual(claimRes.data?.hcsAudit?.provenance, "SIMULATED", "HCS audit must be SIMULATED");
-  console.log("[PASS] /api/yield/claim verified: txId null, hashscanUrl null, provenance SIMULATED");
+  assert.strictEqual(claimRes.data?.code, "AUTH_REQUIRED");
+  console.log("[PASS] /api/yield/claim rejects unauthenticated client-controlled claim fields without a receipt");
   passed++;
 
   // 6. Test Rent Simulation route

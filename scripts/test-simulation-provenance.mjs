@@ -78,13 +78,13 @@ async function runTests() {
       amount: 100
     }));
 
-    if (yieldRes.statusCode !== 200) {
-      throw new Error(`Expected 200, got ${yieldRes.statusCode}`);
+    if (yieldRes.statusCode !== 401) {
+      throw new Error(`Expected unauthenticated 401, got ${yieldRes.statusCode}`);
     }
-    if (yieldRes.data.hcsAudit.txId !== null) {
-      throw new Error("Expected hcsAudit.txId to be null for simulated yield claim");
+    if (yieldRes.data.txId !== null || yieldRes.data.success !== false) {
+      throw new Error("Unauthenticated yield claim must not return a transaction or success");
     }
-    console.log("✅ Yield claim simulation returns null txId");
+    console.log("✅ Unauthenticated yield claim is rejected with no txId");
 
     console.log("\nAll simulation provenance tests passed!");
     process.exit(0);
