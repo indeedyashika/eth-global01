@@ -53,9 +53,17 @@ export async function POST(req: NextRequest) {
         }
         state = recordStep5WorldId(data);
         break;
-      case 6:
-        state = recordStep6CapTable(data);
+      case 6: {
+        const { getAuthoritativeCapTable } = await import("@/lib/captable/capTableService");
+        const capTable = await getAuthoritativeCapTable("prop_456_oak_ave");
+        state = recordStep6CapTable({
+          holderCount: capTable.holders.length,
+          consensusSeqCount: capTable.hcsSequenceCount,
+          success: data?.success !== false,
+          error: data?.error,
+        });
         break;
+      }
       case 7:
         state = recordStep7Hermes(data);
         break;

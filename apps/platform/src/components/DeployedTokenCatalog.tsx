@@ -52,6 +52,19 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
   // Step 6 Cap table active tab
   const [step6Tab, setStep6Tab] = useState<"captable" | "ledger">("captable");
   const [isConfirmingStep6, setIsConfirmingStep6] = useState(false);
+  const [capTable, setCapTable] = useState<any | null>(null);
+
+  const fetchCapTable = async () => {
+    try {
+      const res = await fetch("/api/tokens/prop_456_oak_ave/captable");
+      const data = await res.json();
+      if (data.success && data.capTable) {
+        setCapTable(data.capTable);
+      }
+    } catch (e) {
+      console.warn("[fetchCapTable] Error:", e);
+    }
+  };
 
   // Step 8 Compromise attempt state
   const [isSimulatingAttack, setIsSimulatingAttack] = useState(false);
@@ -80,6 +93,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
 
   useEffect(() => {
     fetchWorkflow();
+    fetchCapTable();
   }, []);
 
   const handleResetWorkflow = async () => {
@@ -305,6 +319,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
       } else {
         await fetchWorkflow();
       }
+      await fetchCapTable();
     } catch (e: any) {
       setWorldIdStage("IDLE");
       setWorldIdError(e.message || "Failed to verify World ID proof and claim shares");
@@ -325,8 +340,8 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
         body: JSON.stringify({
           step: 6,
           data: {
-            holderCount: 2,
-            consensusSeqCount: 4,
+            holderCount: capTable?.holders?.length ?? 2,
+            consensusSeqCount: capTable?.hcsSequenceCount ?? 4,
             success: true,
           },
         }),
@@ -334,6 +349,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
       const data = await res.json();
       if (data.success) {
         setWorkflow(data.state);
+        await fetchCapTable();
       }
     } catch (e) {
       console.error("Step 6 confirm error:", e);
@@ -1051,40 +1067,127 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
             </div>
           ) : (
             <div className="space-y-4">
-              {step6Tab === "captable" ? (
-                <div className="border border-neutral-200 overflow-x-auto text-xs">
-                  <table className="w-full text-left">
-                    <thead className="bg-neutral-100 border-b border-neutral-200 text-neutral-600 uppercase text-[10px]">
-                      <tr>
-                        <th className="p-2.5">Holder Account</th>
-                        <th className="p-2.5">Role</th>
-                        <th className="p-2.5">Shares</th>
-                        <th className="p-2.5">Ownership %</th>
-                        <th className="p-2.5">World ID Status</th>
-                        <th className="p-2.5">Claimable Yield</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-neutral-200 text-black">
-                      <tr>
-                        <td className="p-2.5 font-mono text-[11px]">0x70997970C51812dc3A010C7d01b50e0d17dc79C8</td>
-                        <td className="p-2.5 font-bold">Treasury</td>
-                        <td className="p-2.5 font-bold">900</td>
-                        <td className="p-2.5 font-bold">90.0%</td>
-                        <td className="p-2.5 text-neutral-500">Exempt (Issuer)</td>
-                        <td className="p-2.5 text-neutral-500">$4,500.00 / mo</td>
-                      </tr>
-                      <tr className="bg-neutral-50">
-                        <td className="p-2.5 font-mono text-[11px]">0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC</td>
-                        <td className="p-2.5 font-bold">Verified Investor</td>
-                        <td className="p-2.5 font-bold">100</td>
-                        <td className="p-2.5 font-bold">10.0%</td>
-                        <td className="p-2.5 text-black font-bold">✓ World ID KYC Verified</td>
-                        <td className="p-2.5 text-black font-bold">$500.00 / mo</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
+              {step6Tab === "captable" ? (() => {
+                const isStep5Done = workflow?.step5.status === "SUCCESS";
+                const sharesClaimed = workflow?.step5.sharesClaimed || (isStep5Done ? 100 : 0);
+                const treasuryShares = Math.max(0, 1000 - sharesClaimed);
+                const rentTotal = workflow?.step2.rentAmount || 5000;
+
+                const fallbackHolders = [
+                  {
+                    holder: "Treasury (Issuer)",
+                    walletAccount: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+                    shares: treasuryShares,
+                    ownershipPercentage: (treasuryShares / 1000) * 100,
+                    ownershipPercentageFormatted: `${((treasuryShares / 1000) * 100).toFixed(2)}%`,
+                    claimableYieldUsd: (treasuryShares / 1000) * rentTotal,
+                    claimableYieldFormatted: `$${((treasuryShares / 1000) * rentTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mo`,
+                    verificationStatus: "Exempt (Issuer)",
+                    livenessStatus: "EXEMPT",
+                    token: "OAK-RWA",
+                    network: "Base Sepolia (EVM)",
+                    lastTransaction: workflow?.step1.paymentTxId || "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    lastTransactionUrl: workflow?.step1.paymentTxId ? `https://sepolia.basescan.org/tx/${workflow?.step1.paymentTxId}` : null,
+                    isTreasury: true,
+                  },
+                  ...(isStep5Done
+                    ? [
+                        {
+                          holder: "Verified Investor",
+                          walletAccount: claimReceipt?.investorAddress || "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+                          shares: sharesClaimed,
+                          ownershipPercentage: (sharesClaimed / 1000) * 100,
+                          ownershipPercentageFormatted: `${((sharesClaimed / 1000) * 100).toFixed(2)}%`,
+                          claimableYieldUsd: (sharesClaimed / 1000) * rentTotal,
+                          claimableYieldFormatted: "$500.00 / mo",
+                          verificationStatus: "✓ World ID Verified",
+                          livenessStatus: "OK",
+                          token: "OAK-RWA",
+                          network: "Base Sepolia (EVM)",
+                          lastTransaction: workflow?.step5.claimTxId || claimReceipt?.txHash || null,
+                          lastTransactionUrl: (workflow?.step5.claimTxId || claimReceipt?.txHash)
+                            ? `https://sepolia.basescan.org/tx/${workflow?.step5.claimTxId || claimReceipt?.txHash}`
+                            : null,
+                          isTreasury: false,
+                        },
+                      ]
+                    : []),
+                ];
+
+                const holdersList = capTable?.holders && capTable.holders.length > 0 ? capTable.holders : fallbackHolders;
+
+                return (
+                  <div className="border border-neutral-200 overflow-x-auto text-xs">
+                    <table className="w-full text-left min-w-[900px]">
+                      <thead className="bg-neutral-100 border-b border-neutral-200 text-neutral-600 uppercase text-[10px]">
+                        <tr>
+                          <th className="p-2.5">Holder</th>
+                          <th className="p-2.5">Wallet / Account</th>
+                          <th className="p-2.5">Shares</th>
+                          <th className="p-2.5">Ownership %</th>
+                          <th className="p-2.5">Claimable Yield</th>
+                          <th className="p-2.5">Verification Status</th>
+                          <th className="p-2.5">Liveness</th>
+                          <th className="p-2.5">Token</th>
+                          <th className="p-2.5">Network</th>
+                          <th className="p-2.5">Last Transaction</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200 text-black">
+                        {holdersList.map((holderRow: any) => (
+                          <tr key={holderRow.walletAccount} className={holderRow.isTreasury ? "" : "bg-neutral-50"}>
+                            <td className="p-2.5 font-bold">{holderRow.holder}</td>
+                            <td className="p-2.5 font-mono text-[11px]">
+                              {holderRow.walletAccount.length > 20
+                                ? `${holderRow.walletAccount.slice(0, 10)}...${holderRow.walletAccount.slice(-8)}`
+                                : holderRow.walletAccount}
+                            </td>
+                            <td className="p-2.5 font-bold font-mono">{holderRow.shares.toLocaleString()}</td>
+                            <td className="p-2.5 font-bold">
+                              <span className="px-1.5 py-0.5 bg-neutral-200 border border-neutral-300 rounded font-mono text-[10px]">
+                                {holderRow.ownershipPercentageFormatted}
+                              </span>
+                            </td>
+                            <td className="p-2.5 font-bold text-emerald-800 font-mono">{holderRow.claimableYieldFormatted}</td>
+                            <td className="p-2.5">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                holderRow.verificationStatus.includes("World ID")
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  : holderRow.verificationStatus.includes("Exempt")
+                                  ? "bg-neutral-100 text-neutral-700 border border-neutral-300"
+                                  : "bg-amber-100 text-amber-800 border border-amber-300"
+                              }`}>
+                                {holderRow.verificationStatus}
+                              </span>
+                            </td>
+                            <td className="p-2.5 font-mono text-[10px] font-bold">
+                              <span className={holderRow.livenessStatus === "EXPIRED" ? "text-red-600" : "text-emerald-700"}>
+                                {holderRow.livenessStatus}
+                              </span>
+                            </td>
+                            <td className="p-2.5 font-mono text-[10px]">{holderRow.token}</td>
+                            <td className="p-2.5 text-[11px] text-neutral-600 whitespace-nowrap">{holderRow.network}</td>
+                            <td className="p-2.5 font-mono text-[10px]">
+                              {holderRow.lastTransactionUrl ? (
+                                <a
+                                  href={holderRow.lastTransactionUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-black underline hover:text-neutral-600 font-bold"
+                                >
+                                  {holderRow.lastTransaction ? `${holderRow.lastTransaction.slice(0, 8)}...` : "Explorer"} ↗
+                                </a>
+                              ) : (
+                                <span className="text-neutral-400">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })() : (
                 <div className="space-y-2 text-xs">
                   <div className="text-[11px] text-neutral-600 mb-2">
                     Topic ID: <span className="font-mono text-black font-bold">0.0.5698421</span> (Hedera Testnet)

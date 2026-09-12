@@ -1,21 +1,32 @@
 import { NextResponse } from "next/server";
 import { ApiError, handleRoute, requireToken } from "@/lib/api/helpers";
+import { requireOperatorSession } from "@/lib/api/sessionAuth";
 import { getHolder, insertEvent, updateHolder } from "@/lib/db/repo";
 import { grantKyc, unfreezeAccount } from "@/lib/hedera/tokenService";
 import { setEvmApproved, setEvmFrozen } from "@/lib/evm/client";
 import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
+import { isAddress } from "ethers";
 
 export const dynamic = "force-dynamic";
 
 /** Admin approval step: grants KYC and/or unfreezes the account, whichever compliance
  *  mechanisms this token was created with, and marks the holder WHITELISTED. */
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ tokenId: string; accountId: string }> }
 ) {
   return handleRoute(async () => {
+    requireOperatorSession(req);
     const { tokenId, accountId } = await params;
     const token = requireToken(tokenId);
+
+    if (token.blockchain === "EVM" && !isAddress(accountId)) {
+      throw new ApiError("Token is on EVM; account must be a valid EVM address", 400);
+    }
+    if (token.blockchain === "HEDERA" && !/^\d+\.\d+\.\d+$/.test(accountId)) {
+      throw new ApiError("Token is on Hedera; account must be a valid Hedera account ID", 400);
+    }
+
     const holder = getHolder(tokenId, accountId);
     if (!holder) throw new ApiError("Holder has not registered for this token yet.", 404);
     if (!holder.associated) throw new ApiError("Holder must associate the token to their account first.", 409);

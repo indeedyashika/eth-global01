@@ -273,6 +273,7 @@ export function getAuthoritativeWorkspaceData(identifier: string = "prop_456_oak
 
   // 6. Authoritative Token & Real Holders
   const realHolders: AuthoritativeHolderItem[] = [];
+  const totalSupplyNumber = 1000;
   try {
     const holderRows = db
       .prepare(
@@ -281,11 +282,28 @@ export function getAuthoritativeWorkspaceData(identifier: string = "prop_456_oak
       .all(canonicalPropertyId, "prop_456_oak_ave") as any[];
 
     for (const hr of holderRows) {
+      let balance = 0;
+      // Read authoritative balance from transfer events or Step 5 claim
+      const transferRow = db
+        .prepare("SELECT detail FROM events WHERE (token_id = ? OR token_id = ?) AND account_id = ? AND type = 'TRANSFER' ORDER BY id DESC LIMIT 1")
+        .get(canonicalPropertyId, "prop_456_oak_ave", hr.account_id) as { detail?: string } | undefined;
+
+      if (transferRow?.detail) {
+        try {
+          const detail = JSON.parse(transferRow.detail);
+          balance = Number(detail.amount) || 0;
+        } catch {}
+      } else if (workflow.step5.status === "SUCCESS" && workflow.step5.sharesClaimed > 0) {
+        balance = workflow.step5.sharesClaimed;
+      }
+
+      const sharePercentage = totalSupplyNumber > 0 ? (balance / totalSupplyNumber) * 100 : 0;
+
       realHolders.push({
         accountId: hr.account_id,
         evmAddress: hr.evm_address || hr.account_id,
-        shares: 100, // standard fractional share allocation upon verification
-        sharePercentage: 10.0,
+        shares: balance,
+        sharePercentage,
         kycGranted: Boolean(hr.kyc_granted),
         worldIdVerified: Boolean(hr.world_id_verified_at || hr.world_id_selfie_verified_at),
         status: hr.status || "WHITELISTED",

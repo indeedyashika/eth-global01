@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleRoute } from "@/lib/api/helpers";
 import { getToken, listEvents, listHolders } from "@/lib/db/repo";
 import { getAuthoritativeWorkspaceData } from "@/lib/workspace/authoritativeWorkspace";
+import { getAuthoritativeCapTable } from "@/lib/captable/capTableService";
 import type { TokenRecord } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -47,12 +48,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ tokenId
       };
     }
 
+    const capTable = await getAuthoritativeCapTable(tokenId);
     const holders = listHolders(tokenId);
     const events = listEvents(tokenId);
     return NextResponse.json({
       token,
       holders,
       events,
+      capTable,
       authoritativeWorkspace: authData,
     });
   });
