@@ -1374,8 +1374,8 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
 
           <AgenticSafetyCockpit
             isLocked={isStep7Locked}
-            monthlyRent={workflow?.step2.rentAmount || 5000}
-            propertyAddress="456 Oak Avenue, Miami FL 33101"
+            monthlyRent={workflow?.step2.rentAmount || workspaceData?.rent?.depositedAmount || 5000}
+            propertyAddress={workflow?.step1.propertyAddress || workspaceData?.property?.address || "456 Oak Avenue, Miami FL 33101"}
             onWorkflowComplete={async () => {
               await fetchWorkflow();
             }}

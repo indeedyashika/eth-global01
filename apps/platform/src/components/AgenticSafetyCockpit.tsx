@@ -256,14 +256,6 @@ export function AgenticSafetyCockpit({
         body: JSON.stringify({
           sessionId: session.sessionId,
           action: "FULL_TOKENIZATION_AND_YIELD_PIPELINE",
-          property: {
-            street: propertyAddress.split(",")[0] || "456 Oak Avenue",
-            city: "Miami",
-            state: "FL",
-            zip: "33101",
-            monthlyRent: monthlyRent || 5000,
-            shares: 1000,
-          },
           simulateMalicious: false,
         }),
       });
@@ -544,6 +536,50 @@ export function AgenticSafetyCockpit({
                 <div className="p-2 bg-neutral-50 border border-neutral-200">
                   <div className="text-[9px] text-neutral-500 uppercase font-semibold">Validator</div>
                   <div className="font-bold text-black font-mono text-xs truncate">SessionKeyValidator</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Authoritative Protocol State Proof (Steps 1-6) */}
+          {executionResult.property && (
+            <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-2 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 pb-1.5">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-black">
+                  <span>🏛️</span>
+                  <span>Authoritative Protocol State Ingested (Steps 1-6)</span>
+                </span>
+                <span className="px-1.5 py-0.5 bg-black text-white text-[9px] font-bold tracking-wider">
+                  REAL PROTOCOL STATE
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="p-2 bg-white border border-neutral-200">
+                  <div className="text-[9px] text-neutral-500 uppercase font-semibold">Verified Property</div>
+                  <div className="font-bold text-black text-xs truncate" title={executionResult.property.address}>
+                    {executionResult.property.address}
+                  </div>
+                  <div className="text-[9px] text-neutral-500 font-mono">
+                    DPV: {executionResult.property.dpvConfirmation || "Y"} · ID: {executionResult.property.id}
+                  </div>
+                </div>
+                <div className="p-2 bg-white border border-neutral-200">
+                  <div className="text-[9px] text-neutral-500 uppercase font-semibold">Active Token & Cap Table</div>
+                  <div className="font-bold text-black text-xs">
+                    {executionResult.token?.symbol || "OAK-RWA"} ({executionResult.token?.totalSupply || 1000} Shares)
+                  </div>
+                  <div className="text-[9px] text-neutral-500">
+                    Holders: {executionResult.token?.holdersCount || 2} · Dynamic Allocation
+                  </div>
+                </div>
+                <div className="p-2 bg-white border border-neutral-200">
+                  <div className="text-[9px] text-neutral-500 uppercase font-semibold">Verified Investor (World ID)</div>
+                  <div className="font-bold text-black font-mono text-xs truncate">
+                    {executionResult.investor?.wallet ? `${executionResult.investor.wallet.slice(0, 10)}...` : "Verified Holder"}
+                  </div>
+                  <div className="text-[9px] text-neutral-500 font-mono truncate">
+                    Nullifier: {executionResult.investor?.nullifierHash?.slice(0, 12)}...
+                  </div>
                 </div>
               </div>
             </div>

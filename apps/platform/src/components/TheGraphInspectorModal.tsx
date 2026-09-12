@@ -300,9 +300,9 @@ export function TheGraphInspectorModal({ isOpen, onClose }: TheGraphInspectorMod
                 <div>
                   <span className="text-neutral-700 font-bold">&gt; Agent Response:</span>{" "}
                   <span className="text-neutral-900">
-                    "The top holder is <strong className="text-black">0x742d...</strong> with{" "}
-                    <strong className="text-black">250 OAK-RWA</strong> tokens (25% share). Based on monthly rental collections of $3,800, their Superfluid CFA stream continuously accrues{" "}
-                    <strong className="text-black font-bold">$950.00/month</strong>."
+                    "The top investor holder is <strong className="text-black">0x7099...</strong> with{" "}
+                    <strong className="text-black">100 OAK-RWA</strong> tokens (10% share). Based on monthly rental collections of $5,000, their Superfluid CFA stream continuously accrues{" "}
+                    <strong className="text-black font-bold">$500.00/month</strong>."
                   </span>
                 </div>
               </div>
