@@ -23,6 +23,4 @@ delete process.env.YIELD_VAULT_ADDRESS;
 process.env.PRISM_CONTRACT_MODE = "LIVE";
 assert.throws(requireLiveContractDeployments, /PropertyRegistry.*YieldVault/);
 assert(contractDeploymentStatus().every((item) => item.state === "COMPILED_ONLY" && item.address === null));
-process.env.PRISM_CONTRACT_MODE = "SIMULATED";
-assert(contractDeploymentStatus().every((item) => item.state === "SIMULATED" && item.address === null));
 console.log("Contract deployment configuration tests passed.");

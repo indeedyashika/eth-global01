@@ -102,31 +102,66 @@ export default function HermesConsolePage() {
         });
         const json = await res.json();
         addLog("MCP", `Superfluid CFA stream accelerated: +$${(json.amountDeposited / 2592000).toFixed(6)}/sec`, json);
-        addLog("HCS", `Consensus receipt anchored on Hedera Testnet! Topic: ${json.hcsAudit?.topicId || "SIMULATED"}, Sequence: #${json.hcsAudit?.sequenceNumber ?? "N/A"}`);
+        addLog("HCS", `Consensus receipt anchored on Hedera Testnet! Topic: ${json.hcsAudit?.topicId || "UNCONFIGURED"}, Sequence: #${json.hcsAudit?.sequenceNumber ?? "N/A"}`);
         addLog("HERMES", "Autonomous rental yield distribution complete. All token shareholder streams are actively ticking.");
       } else if (cmd.toLowerCase().includes("usps") || cmd.toLowerCase().includes("x402") || cmd.toLowerCase().includes("tokenize")) {
         addLog("HERMES", "Checking physical deliverability for 456 Oak Avenue via Hedera x402 Property Oracle paywall...");
-        addLog("MCP", "HTTP 402 Payment Required intercepted. Settling 0.5 HBAR micropayment via Blocky402...");
-        await new Promise((r) => setTimeout(r, 700));
+        const challengeRes = await fetch("/api/x402/property-oracle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            street: "456 Oak Avenue",
+            city: "Miami",
+            state: "FL",
+            zip: "33101",
+          }),
+        });
+        const challengeJson = await challengeRes.json();
+        const invoice = challengeJson.x402;
+        if (!invoice?.invoiceId || !invoice?.payee) {
+          addLog("MCP", `x402 challenge failed: ${challengeJson.error || "Unknown challenge error"}`);
+          return;
+        }
+        addLog("MCP", `HTTP 402 Payment Required intercepted. Settling 0.5 HBAR micropayment to payee ${invoice.payee} via Blocky402...`);
+        const settleRes = await fetch("/api/x402/settle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceId: invoice.invoiceId,
+            payee: invoice.payee,
+            amount: invoice.amount || "50000000",
+          }),
+        });
+        const settleJson = await settleRes.json();
+        if (!settleJson.success || !settleJson.txId) {
+          addLog("MCP", `x402 live settlement failed: ${settleJson.error || "Operator credentials missing on Hedera"}`);
+          return;
+        }
         const res = await fetch("/api/x402/property-oracle", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Payment-Tx": `SIMULATED_PAYMENT`,
-            "X-Payment-Invoice": "inv_console_demo",
+            "X-Payment-Tx": settleJson.txId,
+            "X-Payment-Invoice": invoice.invoiceId,
           },
-          body: JSON.stringify({ street: "456 Oak Avenue", city: "Miami", state: "FL", zip: "33101" }),
+          body: JSON.stringify({
+            street: "456 Oak Avenue",
+            city: "Miami",
+            state: "FL",
+            zip: "33101",
+          }),
         });
         const json = await res.json();
-        addLog("MCP", `USPS DPV deliverability confirmed: Code ${json.dpvConfirmation} (Deliverable Address)`, json);
-        addLog("HCS", `HCS Audit message recorded on Topic ${json.hcsAudit?.topicId || "SIMULATED"} (Sequence #${json.hcsAudit?.sequenceNumber ?? "N/A"})`);
-        addLog("HERMES", "Property is physical asset verified. HTS fractional token creation authorized.");
+        if (json.isValid) {
+          addLog("MCP", `USPS DPV deliverability confirmed: Code ${json.dpvConfirmation} (Deliverable Address)`, json);
+          addLog("HCS", `HCS Audit message recorded on Topic ${json.hcsAudit?.topicId || "UNCONFIGURED"} (Sequence #${json.hcsAudit?.sequenceNumber ?? "N/A"})`);
+          addLog("HERMES", "Property is physical asset verified. HTS fractional token creation authorized.");
+        } else {
+          addLog("MCP", `USPS verification rejected: ${json.error || "Deliverability failed"}`);
+        }
       } else if (cmd.toLowerCase().includes("hip-423") || cmd.toLowerCase().includes("schedule")) {
-        addLog("HERMES", "Queueing Hedera scheduled recurring yield payout transaction (HIP-423)...");
-        await new Promise((r) => setTimeout(r, 600));
-        addLog("MCP", "Scheduled transaction created: 0.0.4491823@1788783526. Schedule ID: 0.0.592819.");
-        addLog("HCS", "HIP-423 schedule confirmation logged to Hedera Consensus Service.");
-        addLog("HERMES", "Recurring schedule active. Payouts will trigger on the 1st of every month automatically.");
+        addLog("HERMES", "Checking Hedera scheduled recurring yield payout prerequisites (HIP-423)...");
+        addLog("HERMES", "Live recurring yield scheduling requires configured HTS token and operator credentials.");
       } else {
         addLog("HERMES", `Received instruction: "${cmd}". Routing through Hermes operator autonomous planner...`);
         await new Promise((r) => setTimeout(r, 600));
@@ -460,8 +495,7 @@ export default function HermesConsolePage() {
         <div className="border border-neutral-300 bg-white p-6 shadow-sm">
           <h3 className="text-base font-bold text-black mb-3">Live Hedera Consensus Audit Receipt</h3>
           <HcsAuditBadge
-            sequenceNumber={83526}
-            txId="SIMULATED_PAYMENT"
+            topicId={process.env.NEXT_PUBLIC_HEDERA_AUDIT_TOPIC_ID}
           />
         </div>
 

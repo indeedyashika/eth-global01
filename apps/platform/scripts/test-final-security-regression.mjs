@@ -23,6 +23,7 @@ if (!isRunningUnderTsx) {
 
 const PORT = process.env.PORT || "3088";
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+process.env.HEDERA_OPERATOR_ID = process.env.HEDERA_OPERATOR_ID || "0.0.98765";
 
 // Dynamically import required platform libraries & route handlers
 const {
@@ -657,7 +658,7 @@ async function runFinalSecurityRegressionPass() {
     recordFail("Fabricated tx ID rejected by settlement verification engine (402 Payment verification failed)", err);
   }
 
-  // 4.2 Fabricated HCS sequence
+  // 4.2 Fabricated HCS sequence: Rent deposit must fail closed when vault unconfigured (never fabricate sequence)
   try {
     const p = buildPolicy({ grantor: operatorWallet.address, nonce: 2014n });
     const sig = await operatorWallet.signTypedData(SESSION_KEY_EIP712_DOMAIN, SESSION_KEY_EIP712_TYPES, p);
@@ -677,25 +678,31 @@ async function runFinalSecurityRegressionPass() {
       { propertyId: "0.0.4491823", amount: 3800 },
       { authorization: `Bearer ${opSession.sessionId}` }
     );
-    assert.strictEqual(rentRes.status, 200);
-    assert.strictEqual(rentRes.data?.provenance, "SIMULATED");
-    assert.strictEqual(rentRes.data?.txId, null);
-    assert.strictEqual(rentRes.data?.hashscanUrl, null);
-    recordPass("HCS audit provenance strictly marked SIMULATED with null txId and null hashscanUrl");
+    assert.strictEqual(rentRes.status, 503, "Unconfigured YieldVault must return HTTP 503");
+    assert.strictEqual(rentRes.data?.code, "YIELD_VAULT_UNCONFIGURED");
+    assert.strictEqual(rentRes.data?.txId ?? null, null, "Must never return a fabricated transaction ID");
+    recordPass("Rent deposit fails closed with 503 without fabricating HCS sequence or txId");
   } catch (err) {
-    recordFail("HCS audit provenance strictly marked SIMULATED with null txId and null hashscanUrl", err);
+    recordFail("Rent deposit fails closed with 503 without fabricating HCS sequence or txId", err);
   }
 
   // 4.3 Fabricated Superfluid hash & 4.4 Fake explorer URL in streams
   try {
     const streamsRes = await getJSON("/api/yield/streams");
-    const s = streamsRes.data?.streams?.find((x) => x.propertyId === "prop_456_oak_ave");
-    assert(s, "Fixture stream must exist");
-    assert.strictEqual(s.txHash, null, "Superfluid fixture txHash must be null");
-    assert.strictEqual(s.provenance, "FIXTURE", "Provenance must be FIXTURE");
-    recordPass("Superfluid fixture has null txHash, null explorer URL, and is marked FIXTURE");
+    const streams = streamsRes.data?.streams || [];
+    assert.strictEqual(
+      streams.some((x) => x.provenance === "FIXTURE"),
+      false,
+      "Runtime streams must NEVER return fabricated FIXTURE data"
+    );
+    assert.strictEqual(
+      streams.some((x) => x.propertyId === "prop_456_oak_ave"),
+      false,
+      "Demo fixture stream must not exist in production runtime"
+    );
+    recordPass("Superfluid streams do not contain fabricated FIXTURE streams or fake explorer URLs");
   } catch (err) {
-    recordFail("Superfluid fixture has null txHash, null explorer URL, and is marked FIXTURE", err);
+    recordFail("Superfluid streams do not contain fabricated FIXTURE streams or fake explorer URLs", err);
   }
 
   // 4.5 Missing contract address presented as deployed
@@ -734,7 +741,7 @@ async function runFinalSecurityRegressionPass() {
   // ============================================================================
   console.log("\n[5] ORACLE INTEGRITY SUITE");
 
-  // 5.1 USPS default-to-Y protection (arbitrary ZIP rejected with DPV N)
+  // 5.1 USPS default-to-Y protection (arbitrary address fails closed, never automatically returns DPV Y)
   try {
     const res = await postJSON("/api/x402/property-oracle", {
       street: "123 Random Blvd",
@@ -746,15 +753,21 @@ async function runFinalSecurityRegressionPass() {
     const invoiceId = res.data?.x402?.invoiceId;
     assert(invoiceId, "Must issue invoice");
 
-    // Settle truthfully in simulation
+    // Settle without operator credentials must fail closed (400)
     const settleRes = await postJSON("/api/x402/settle", {
       invoiceId,
-      payer: "0.0.4491823",
-      amountTinybars: 50000000,
+      payee: "0.0.4491823",
+      amount: "50000000",
     });
-    assert.strictEqual(settleRes.status, 200);
+    assert.strictEqual(settleRes.status, 400, "Unconfigured settlement must fail closed");
 
-    // Call oracle with settled invoice for arbitrary address
+    // Confirm settlement for testing
+    const { recordInvoiceSettlement } = await import(
+      pathToFileURL(path.join(platformRoot, "src/lib/x402/oracleService.ts")).href
+    );
+    recordInvoiceSettlement(invoiceId, "0.0.12345@1700000000.000000000");
+
+    // Query oracle with settled invoice: must fail closed with 503 when USPS_USER_ID is missing, never return DPV Y
     const oracleRes = await postJSON(
       "/api/x402/property-oracle",
       {
@@ -765,12 +778,12 @@ async function runFinalSecurityRegressionPass() {
       },
       { "X-Payment-Invoice": invoiceId }
     );
-    assert.strictEqual(oracleRes.status, 200);
-    assert.strictEqual(oracleRes.data?.isValid, false, "Arbitrary address must NOT default to valid");
-    assert.strictEqual(oracleRes.data?.dpvConfirmation, "N", "DPV confirmation must be 'N'");
-    recordPass("USPS Oracle does NOT default to 'Y': arbitrary address returns isValid: false, DPV: 'N'");
+    assert.strictEqual(oracleRes.status, 503, "Missing USPS credentials must return 503");
+    assert.strictEqual(oracleRes.data?.code, "USPS_CREDENTIALS_REQUIRED");
+    assert.notStrictEqual(oracleRes.data?.dpvConfirmation, "Y", "Must NEVER automatically return DPV Y");
+    recordPass("USPS Oracle does NOT default to 'Y': fails closed with 503 USPS_CREDENTIALS_REQUIRED");
   } catch (err) {
-    recordFail("USPS Oracle does NOT default to 'Y': arbitrary address returns isValid: false, DPV: 'N'", err);
+    recordFail("USPS Oracle does NOT default to 'Y': fails closed with 503 USPS_CREDENTIALS_REQUIRED", err);
   }
 
   // 5.2 x402 fake settlement
@@ -888,27 +901,26 @@ async function runFinalSecurityRegressionPass() {
     recordFail("GET /api/subgraph returns status 'ok' and valid schema entities", err);
   }
 
-  // 7.2 POST /api/subgraph top_holders returns holder distributions
+  // 7.2 POST /api/subgraph top_holders fails closed when unconfigured (no fabricated holders)
   try {
     const res = await postJSON("/api/subgraph", { action: "top_holders" });
-    assert.strictEqual(res.status, 200);
-    assert(Array.isArray(res.data?.data?.accounts) && res.data.data.accounts.length > 0);
-    recordPass("POST /api/subgraph { action: 'top_holders' } returns structured account allocations");
+    assert.strictEqual(res.status, 503, "Unconfigured Subgraph must fail closed with HTTP 503");
+    assert.strictEqual(res.data?.code, "SUBGRAPH_UNCONFIGURED");
+    recordPass("POST /api/subgraph { action: 'top_holders' } fails closed with 503 without fake accounts");
   } catch (err) {
-    recordFail("POST /api/subgraph { action: 'top_holders' } returns structured account allocations", err);
+    recordFail("POST /api/subgraph { action: 'top_holders' } fails closed with 503 without fake accounts", err);
   }
 
-  // 7.3 POST /api/subgraph GraphQL query execution
+  // 7.3 POST /api/subgraph GraphQL query execution fails closed when unconfigured (no fabricated entities)
   try {
     const res = await postJSON("/api/subgraph", {
       query: "{ tokens { id name symbol } }",
     });
-    assert.strictEqual(res.status, 200);
-    assert(res.data?.data?.tokens);
-    assert(Array.isArray(res.data?.data?.tokens));
-    recordPass("POST /api/subgraph GraphQL query resolves structured entity data");
+    assert.strictEqual(res.status, 503, "Unconfigured Subgraph must fail closed with HTTP 503");
+    assert.strictEqual(res.data?.code, "SUBGRAPH_UNCONFIGURED");
+    recordPass("POST /api/subgraph GraphQL query fails closed with 503 without fake tokens");
   } catch (err) {
-    recordFail("POST /api/subgraph GraphQL query resolves structured entity data", err);
+    recordFail("POST /api/subgraph GraphQL query fails closed with 503 without fake tokens", err);
   }
 
   // ============================================================================

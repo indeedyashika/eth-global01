@@ -160,16 +160,16 @@ async function runTests() {
   console.log("=== Running Superfluid & Provenance Validation Tests (Behavioral) ===");
   let passed = 0;
 
-  // 1. Behavioral & Fixture Validation: Check yield streams fixture route
+  // 1. Behavioral: Check yield streams endpoint (never returns fake FIXTURE streams)
   const streamsRes = await getJSON("/api/yield/streams");
   assert.strictEqual(streamsRes.status, 200, "Streams endpoint must return 200");
   const streams = streamsRes.data?.streams || [];
-  assert(streams.length > 0, "Streams fixture must be present");
-  const fixtureStream = streams.find((s) => s.propertyId === "prop_456_oak_ave");
-  assert(fixtureStream, "Default fixture stream must exist");
-  assert.strictEqual(fixtureStream.txHash, null, "Fixture stream txHash must be null");
-  assert.strictEqual(fixtureStream.provenance, "FIXTURE", "Fixture stream must be marked FIXTURE");
-  console.log("[PASS] /api/yield/streams fixture is marked FIXTURE with null txHash");
+  assert.strictEqual(
+    streams.some((s) => s.provenance === "FIXTURE"),
+    false,
+    "Streams must never return fabricated FIXTURE streams"
+  );
+  console.log("[PASS] /api/yield/streams does not fabricate fixture streams");
   passed++;
 
   // 2. Behavioral: Grant cryptographic session for agent execution
@@ -220,7 +220,7 @@ async function runTests() {
   console.log("[PASS] Issued valid EIP-712 session for agent execution");
   passed++;
 
-  // 3. Behavioral: Execute agent mission pipeline
+  // 3. Behavioral: Execute agent mission pipeline (fail-closed when unconfigured, no fake execution)
   const execRes = await postJSON("/api/agent/execute", {
     sessionId,
     action: "FULL_TOKENIZATION_AND_YIELD_PIPELINE",
@@ -234,27 +234,26 @@ async function runTests() {
     },
   });
   assert.strictEqual(execRes.status, 200, `Agent execution must return 200: ${JSON.stringify(execRes.data)}`);
-  assert.strictEqual(execRes.data?.missionStatus, "SIMULATED", "Mission status must be SIMULATED");
+  assert.strictEqual(execRes.data?.missionStatus, "FAILED", "Mission status must be FAILED when unconfigured");
 
   const steps = execRes.data?.steps || [];
   assert.strictEqual(steps.length, 4, "Must contain 4 pipeline steps");
 
   for (const step of steps) {
-    assert.strictEqual(step.txId, null, `Step ${step.name} txId must be null in simulation`);
-    assert.strictEqual(step.explorerUrl, null, `Step ${step.name} explorerUrl must be null in simulation`);
-    assert.strictEqual(step.status, "SIMULATED", `Step ${step.name} status must be SIMULATED`);
-    assert.strictEqual(step.provenance, "SIMULATED", `Step ${step.name} provenance must be SIMULATED`);
+    assert.strictEqual(step.txId, null, `Step ${step.name} txId must be null (never fabricate txId)`);
+    assert.strictEqual(step.explorerUrl, null, `Step ${step.name} explorerUrl must be null (never fabricate explorerUrl)`);
+    assert.strictEqual(step.status, "FAILED", `Step ${step.name} status must be FAILED when unconfigured`);
   }
-  console.log("[PASS] /api/agent/execute returns missionStatus SIMULATED and all step txIds/explorerUrls are null");
+  console.log("[PASS] /api/agent/execute fails closed with status FAILED and all step txIds/explorerUrls are null");
   passed++;
 
   // 4. Behavioral: Test Superfluid CFA Step specifics
   const superfluidStep = steps.find((s) => s.name.includes("Superfluid CFA"));
   assert(superfluidStep, "Superfluid CFA step must be in execution");
-  assert.strictEqual(superfluidStep.provenance, "SIMULATED", "Superfluid step must be SIMULATED");
   assert.strictEqual(superfluidStep.txId, null, "Superfluid step txId must be null");
   assert.strictEqual(superfluidStep.explorerUrl, null, "Superfluid step explorerUrl must be null");
-  console.log("[PASS] Superfluid CFA step verified: status SIMULATED, txId null, explorerUrl null");
+  assert.strictEqual(superfluidStep.status, "FAILED", "Superfluid step must be FAILED when unconfigured");
+  console.log("[PASS] Superfluid CFA step verified: status FAILED, txId null, explorerUrl null");
   passed++;
 
   // 5. Behavioral: Test Yield Claim route authentication & fail-closed behavior

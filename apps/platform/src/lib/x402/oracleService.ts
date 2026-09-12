@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { logHcsAuditEvent, getAuditTopicId, type HcsAuditReceipt } from "../hedera/hcsAudit";
 import { verifyHederaPaymentTransaction } from "../hedera/mirrorNode";
 
-export type VerificationMode = "LIVE_USPS" | "SIMULATED_USPS";
+export type VerificationMode = "LIVE_USPS";
 
 export interface PropertyAddressInput {
   street: string;
@@ -14,11 +14,11 @@ export interface PropertyAddressInput {
 export interface PaymentProof {
   paymentTx?: string | null;
   invoiceId?: string;
-  provenance?: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance?: "LIVE_ONCHAIN";
 }
 
 export interface OracleRequestOptions {
-  mode?: "LIVE_USPS" | "SIMULATED_USPS" | "AUTO";
+  mode?: "LIVE_USPS";
 }
 
 export interface X402Challenge {
@@ -41,9 +41,9 @@ export interface InvoiceRecord {
   displayAmount: string;
   payee: string;
   createdAt: number;
-  status: "UNPAID" | "CONFIRMED" | "SIMULATED";
+  status: "UNPAID" | "CONFIRMED";
   paymentTxId: string | null;
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance: "LIVE_ONCHAIN";
   verifiedAmountTinybars?: string;
   settledAt?: number;
 }
@@ -64,33 +64,29 @@ export function getInvoice(invoiceId: string): InvoiceRecord | undefined {
 }
 
 export function createX402Invoice(payee?: string, amountTinybars = "50000000"): X402Challenge {
-  const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-  const isLive = (process.env.PRISM_CONTRACT_MODE ?? "SIMULATED").toUpperCase() === "LIVE";
-  const configuredOperator = process.env.HEDERA_OPERATOR_ID?.trim();
-
-  if (isLive && !payee && !configuredOperator) {
-    throw new Error("LIVE mode requires a configured HEDERA_OPERATOR_ID or explicit payee for x402 invoice creation.");
+  const configuredPayee = (payee || process.env.X402_PAYEE_ACCOUNT || process.env.HEDERA_OPERATOR_ID)?.trim();
+  if (!configuredPayee) {
+    throw new Error("X402_CONFIG_MISSING: Hedera operator or payee account is not configured in environment (HEDERA_OPERATOR_ID or X402_PAYEE_ACCOUNT required).");
   }
-
-  const payeeAccount = payee || configuredOperator || "0.0.0";
+  const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
   const auditTopicId = getAuditTopicId() ?? "";
 
   getActiveInvoices().set(invoiceId, {
     invoiceId,
     amountTinybars,
     displayAmount: "0.5 HBAR",
-    payee: payeeAccount,
+    payee: configuredPayee,
     createdAt: Date.now(),
     status: "UNPAID",
     paymentTxId: null,
-    provenance: "SIMULATED",
+    provenance: "LIVE_ONCHAIN",
   });
 
   return {
     version: "1.0",
     network: "hedera-testnet",
     facilitator: "blocky402",
-    payee: payeeAccount,
+    payee: configuredPayee,
     amount: amountTinybars,
     unit: "tinybar",
     displayAmount: "0.5 HBAR",
@@ -104,8 +100,8 @@ export function createX402Invoice(payee?: string, amountTinybars = "50000000"): 
 
 export function recordInvoiceSettlement(
   invoiceId: string,
-  txId: string | null,
-  provenance: "LIVE_ONCHAIN" | "SIMULATED",
+  txId: string,
+  provenance: "LIVE_ONCHAIN" = "LIVE_ONCHAIN",
   amountTinybars?: string
 ): InvoiceRecord {
   const invoices = getActiveInvoices();
@@ -114,22 +110,16 @@ export function recordInvoiceSettlement(
     throw new Error("Cannot settle an unknown x402 invoice.");
   }
 
-  // A live receipt is the only evidence that can make an invoice CONFIRMED. In
-  // particular, never turn a client-supplied formatted transaction ID into a
-  // paid invoice merely because it looks like a Hedera transaction ID.
-  if (provenance === "LIVE_ONCHAIN" && !txId) {
+  if (!txId) {
     throw new Error("A live x402 settlement requires a confirmed transaction ID.");
-  }
-  if (provenance === "SIMULATED" && txId) {
-    throw new Error("A simulated x402 settlement must not contain a transaction ID.");
   }
   if (amountTinybars && amountTinybars !== existing.amountTinybars) {
     throw new Error("Settlement amount does not match the invoice amount.");
   }
 
-  existing.status = provenance === "LIVE_ONCHAIN" ? "CONFIRMED" : "SIMULATED";
+  existing.status = "CONFIRMED";
   existing.paymentTxId = txId;
-  existing.provenance = provenance;
+  existing.provenance = "LIVE_ONCHAIN";
   existing.verifiedAmountTinybars = existing.amountTinybars;
   existing.settledAt = Date.now();
   return existing;
@@ -139,71 +129,38 @@ export interface OracleVerificationResult {
   isValid: boolean;
   dpvConfirmation: "Y" | "N" | "D" | "S";
   verificationMode: VerificationMode;
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
-  paymentProvenance: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance: "LIVE_ONCHAIN";
+  paymentProvenance: "LIVE_ONCHAIN";
   paymentTxId: string | null;
-  isSimulated: boolean;
-  simulationNotice?: string;
   error?: string;
   standardizedAddress: PropertyAddressInput;
   addressHash: string;
+  hcsTopicId?: string | null;
+  hcsSequenceNumber?: number | null;
+  hcsTxId?: string | null;
+  consensusTimestamp?: string;
+  network?: string;
+  ownershipDisclaimer: string;
   hcsAudit: HcsAuditReceipt;
   verificationTimestamp: string;
 }
 
 export interface OracleResponse {
-  status: 200 | 400 | 402 | 503;
-  error?: string;
-  x402?: X402Challenge;
+  status: number;
   data?: OracleVerificationResult;
+  error?: string;
+  code?: string;
+  x402?: X402Challenge;
 }
 
-// Whitelisted deterministic demo fixtures for SIMULATED_USPS mode
-export const DEMO_PROPERTY_FIXTURES: Array<{
-  matchNumber: string;
-  matchStreet: string;
-  city: string;
-  state: string;
-  zip: string;
-  standardizedStreet: string;
-}> = [
-  {
-    matchNumber: "456",
-    matchStreet: "OAK",
-    city: "MIAMI",
-    state: "FL",
-    zip: "33101",
-    standardizedStreet: "456 OAK AVE",
-  },
-  {
-    matchNumber: "100",
-    matchStreet: "OCEAN",
-    city: "MIAMI BEACH",
-    state: "FL",
-    zip: "33139",
-    standardizedStreet: "100 OCEAN DR",
-  },
-  {
-    matchNumber: "1200",
-    matchStreet: "BRICKELL",
-    city: "MIAMI",
-    state: "FL",
-    zip: "33131",
-    standardizedStreet: "1200 BRICKELL AVE",
-  },
-  {
-    matchNumber: "100",
-    matchStreet: "BISCAYNE",
-    city: "MIAMI",
-    state: "FL",
-    zip: "33132",
-    standardizedStreet: "100 BISCAYNE BLVD",
-  },
-];
-
 export function computeAddressHash(address: PropertyAddressInput): string {
-  const normalized = `${address.street.trim().toUpperCase()}|${address.city.trim().toUpperCase()}|${address.state.trim().toUpperCase()}|${address.zip.trim()}`;
-  return `0x${crypto.createHash("sha256").update(normalized).digest("hex")}`;
+  const canonical = [
+    address.street.trim().toUpperCase(),
+    address.city.trim().toUpperCase(),
+    address.state.trim().toUpperCase(),
+    address.zip.trim(),
+  ].join("|");
+  return `0x${crypto.createHash("sha256").update(canonical).digest("hex")}`;
 }
 
 export function standardizeAddressString(street: string): string {
@@ -212,36 +169,10 @@ export function standardizeAddressString(street: string): string {
     .toUpperCase()
     .replace(/\bSTREET\b/g, "ST")
     .replace(/\bAVENUE\b/g, "AVE")
-    .replace(/\bROAD\b/g, "RD")
     .replace(/\bBOULEVARD\b/g, "BLVD")
     .replace(/\bDRIVE\b/g, "DR")
-    .replace(/\bCOURT\b/g, "CT")
     .replace(/\bLANE\b/g, "LN")
-    .replace(/\bPLACE\b/g, "PL");
-}
-
-export function isDemoFixture(address: PropertyAddressInput): {
-  matched: boolean;
-  standardizedStreet?: string;
-} {
-  const upperStreet = address.street.trim().toUpperCase();
-  const upperCity = address.city.trim().toUpperCase();
-  const upperState = address.state.trim().toUpperCase();
-  const zip = address.zip.trim().slice(0, 5);
-
-  for (const fixture of DEMO_PROPERTY_FIXTURES) {
-    if (
-      upperCity === fixture.city &&
-      upperState === fixture.state &&
-      zip === fixture.zip &&
-      upperStreet.includes(fixture.matchNumber) &&
-      upperStreet.includes(fixture.matchStreet)
-    ) {
-      return { matched: true, standardizedStreet: fixture.standardizedStreet };
-    }
-  }
-
-  return { matched: false };
+    .replace(/\bROAD\b/g, "RD");
 }
 
 export interface ParsedUspsXml {
@@ -252,7 +183,6 @@ export interface ParsedUspsXml {
 }
 
 export function parseUspsXmlResponse(xmlText: string): ParsedUspsXml {
-  // Check for root or nested error tags
   const errorMatch = xmlText.match(/<Error>[\s\S]*?<Description>(.*?)<\/Description>[\s\S]*?<\/Error>/i);
   if (errorMatch) {
     return {
@@ -262,11 +192,9 @@ export function parseUspsXmlResponse(xmlText: string): ParsedUspsXml {
     };
   }
 
-  // Check for DPVConfirmation code
   const dpvMatch = xmlText.match(/<DPVConfirmation>([YNDS])<\/DPVConfirmation>/i);
   const dpvCode = (dpvMatch ? dpvMatch[1].toUpperCase() : "N") as "Y" | "N" | "D" | "S";
 
-  // Extract address elements if returned
   const streetMatch = xmlText.match(/<Address2>(.*?)<\/Address2>/i);
   const cityMatch = xmlText.match(/<City>(.*?)<\/City>/i);
   const stateMatch = xmlText.match(/<State>(.*?)<\/State>/i);
@@ -284,7 +212,6 @@ export function parseUspsXmlResponse(xmlText: string): ParsedUspsXml {
     };
   }
 
-  // Check for ReturnText warnings / notices
   const returnTextMatch = xmlText.match(/<ReturnText>(.*?)<\/ReturnText>/i);
   const returnText = returnTextMatch ? returnTextMatch[1].trim() : undefined;
 
@@ -378,22 +305,32 @@ export async function queryLiveUspsApi(
 export async function handlePropertyOracleRequest(
   body: PropertyAddressInput,
   proof?: PaymentProof,
-  options?: OracleRequestOptions
+  _options?: OracleRequestOptions
 ): Promise<OracleResponse> {
   if (!body.street || !body.city || !body.state || !body.zip) {
     return {
       status: 400,
       error: "Missing required address fields (street, city, state, zip)",
+      code: "MISSING_ADDRESS_FIELDS",
     };
   }
 
-  // Step 1: Check for payment proof and invoice
+  // Stage 1: x402 Configuration Verification
+  const configuredPayee = (process.env.X402_PAYEE_ACCOUNT || process.env.HEDERA_OPERATOR_ID)?.trim();
+  if (!configuredPayee) {
+    return {
+      status: 503,
+      error: "x402 payment configuration missing: HEDERA_OPERATOR_ID or X402_PAYEE_ACCOUNT must be configured in environment.",
+      code: "X402_CONFIG_MISSING",
+    };
+  }
+
+  // Stage 2: Challenge vs. Payment Proof
   const invoiceId = proof?.invoiceId;
   const paymentTx = proof?.paymentTx ?? null;
-  const requestedProvenance = proof?.provenance;
 
   if (!proof || !invoiceId) {
-    const challenge = createX402Invoice();
+    const challenge = createX402Invoice(configuredPayee);
     return {
       status: 402,
       error: "Payment Required",
@@ -406,29 +343,16 @@ export async function handlePropertyOracleRequest(
     return {
       status: 402,
       error: "Payment Required: Unknown or expired invoice ID. Request a new 402 challenge.",
+      code: "INVALID_INVOICE",
     };
   }
 
-  // Step 2: Server-side Payment Verification
-  // Requirement 4: Verify the payment amount server-side.
-  // Requirement 5: Do not trust the client to claim that payment was completed.
-  // Requirement 6: Do not mark the oracle request as paid until settlement is actually confirmed.
+  // Stage 3: Real On-Chain Payment Verification
   let effectivePaymentTxId: string | null = null;
-  let effectivePaymentProvenance: "LIVE_ONCHAIN" | "SIMULATED" = "SIMULATED";
 
   if (invoice.status === "CONFIRMED") {
-    // Already confirmed by server-side settlement engine (/api/x402/settle)
     effectivePaymentTxId = invoice.paymentTxId;
-    effectivePaymentProvenance = "LIVE_ONCHAIN";
-  } else if (invoice.status === "SIMULATED") {
-    // Explicit simulation mode confirmed server-side via /api/x402/settle: enforce txId must be null
-    // Requirement 3: If actual settlement cannot be performed: return SIMULATED, txId must be null, do not generate a fake transaction ID.
-    effectivePaymentTxId = null;
-    effectivePaymentProvenance = "SIMULATED";
   } else if (paymentTx) {
-    // Client claims live on-chain payment with external transaction ID
-    // Requirement 5: Do not trust the client to claim that payment was completed.
-    // Verify against Hedera Mirror Node
     const verifyResult = await verifyHederaPaymentTransaction({
       txId: paymentTx,
       expectedPayee: invoice.payee,
@@ -439,6 +363,7 @@ export async function handlePropertyOracleRequest(
       return {
         status: 402,
         error: `Payment verification failed: ${verifyResult.error || "Transaction not confirmed on Hedera Testnet"}`,
+        code: "UNCONFIRMED_PAYMENT",
       };
     }
 
@@ -446,11 +371,11 @@ export async function handlePropertyOracleRequest(
       return {
         status: 402,
         error: `Payment verification failed: payment amount does not exactly match the required ${invoice.amountTinybars} tinybars.`,
+        code: "INVALID_PAYMENT_AMOUNT",
       };
     }
 
     effectivePaymentTxId = paymentTx;
-    effectivePaymentProvenance = "LIVE_ONCHAIN";
     recordInvoiceSettlement(
       invoiceId,
       paymentTx,
@@ -458,10 +383,10 @@ export async function handlePropertyOracleRequest(
       verifyResult.actualAmountTinybars?.toString()
     );
   } else {
-    // Invoice exists but is UNPAID and no valid payment proof was provided
     return {
       status: 402,
       error: "Payment Required: Invoice has not been settled.",
+      code: "UNPAID_INVOICE",
       x402: {
         version: "1.0",
         network: "hedera-testnet",
@@ -479,129 +404,224 @@ export async function handlePropertyOracleRequest(
     };
   }
 
-  // Determine verification mode
+  // Stage 4: USPS Credentials Check
   const uspsUserId = process.env.USPS_USER_ID || process.env.USPS_API_KEY || "";
-  const requestedMode = options?.mode ?? "AUTO";
-
-  let effectiveMode: VerificationMode;
-  if (requestedMode === "LIVE_USPS") {
-    if (!uspsUserId) {
-      return {
-        status: 503,
-        error: "LIVE_USPS mode requested, but USPS API credentials (USPS_USER_ID) are not configured on this server.",
-      };
-    }
-    effectiveMode = "LIVE_USPS";
-  } else if (requestedMode === "SIMULATED_USPS") {
-    effectiveMode = "SIMULATED_USPS";
-  } else {
-    // AUTO: Prefer LIVE_USPS if credentials exist; otherwise SIMULATED_USPS
-    effectiveMode = uspsUserId ? "LIVE_USPS" : "SIMULATED_USPS";
-  }
-
-  // Execute Verification based on effective mode
-  let isValid = false;
-  let dpvConfirmation: "Y" | "N" | "D" | "S" = "N";
-  let standardizedAddress: PropertyAddressInput;
-  let simulationNotice: string | undefined;
-  let verificationError: string | undefined;
-
-  if (effectiveMode === "LIVE_USPS") {
-    const liveResult = await queryLiveUspsApi(body, uspsUserId, process.env.USPS_API_URL);
-    isValid = liveResult.isValid;
-    dpvConfirmation = liveResult.dpvConfirmation;
-    verificationError = liveResult.error;
-    standardizedAddress = liveResult.standardizedAddress ?? {
-      street: standardizeAddressString(body.street),
-      city: body.city.trim().toUpperCase(),
-      state: body.state.trim().toUpperCase(),
-      zip: body.zip.trim(),
+  if (!uspsUserId) {
+    return {
+      status: 503,
+      error: "USPS API credentials (USPS_USER_ID) are not configured. Physical property deliverability verification requires real USPS Web Tools credentials.",
+      code: "USPS_CREDENTIALS_REQUIRED",
     };
-  } else {
-    // SIMULATED_USPS mode: Deterministic demo fixture verification
-    const isExplicitlyInvalid =
-      body.street.toLowerCase().includes("invalid") ||
-      body.street.toLowerCase().includes("fake") ||
-      body.zip === "00000" ||
-      body.zip.trim().length < 5;
-
-    if (isExplicitlyInvalid) {
-      isValid = false;
-      dpvConfirmation = "N";
-      verificationError = "Invalid address format or non-deliverable test address indicator.";
-      standardizedAddress = {
-        street: standardizeAddressString(body.street),
-        city: body.city.trim().toUpperCase(),
-        state: body.state.trim().toUpperCase(),
-        zip: body.zip.trim(),
-      };
-    } else {
-      const fixtureCheck = isDemoFixture(body);
-      if (fixtureCheck.matched) {
-        isValid = true;
-        dpvConfirmation = "Y";
-        standardizedAddress = {
-          street: fixtureCheck.standardizedStreet || standardizeAddressString(body.street),
-          city: body.city.trim().toUpperCase(),
-          state: body.state.trim().toUpperCase(),
-          zip: body.zip.trim(),
-        };
-        simulationNotice = "Simulated USPS address verification for registered demo fixture. Live USPS Web Tools credentials required for arbitrary address verification.";
-      } else {
-        // Arbitrary 5-digit ZIPs do NOT automatically return DPV Y!
-        isValid = false;
-        dpvConfirmation = "N";
-        verificationError = "Address not in simulated demo fixture catalog. Arbitrary address validation requires LIVE_USPS mode with configured USPS_USER_ID.";
-        standardizedAddress = {
-          street: standardizeAddressString(body.street),
-          city: body.city.trim().toUpperCase(),
-          state: body.state.trim().toUpperCase(),
-          zip: body.zip.trim(),
-        };
-        simulationNotice = "Simulated USPS verification: Arbitrary non-catalog address rejected.";
-      }
-    }
   }
 
+  // Stage 5: Real USPS Address Verification
+  const liveResult = await queryLiveUspsApi(body, uspsUserId, process.env.USPS_API_URL);
+  const standardizedAddress = liveResult.standardizedAddress ?? {
+    street: standardizeAddressString(body.street),
+    city: body.city.trim().toUpperCase(),
+    state: body.state.trim().toUpperCase(),
+    zip: body.zip.trim(),
+  };
   const addressHash = computeAddressHash(standardizedAddress);
 
-  // Generate verifiable HCS audit receipt on Hedera Consensus Service
-  const hcsAudit = await logHcsAuditEvent({
-    event: "X402_PAYMENT_VERIFIED",
-    propertyId: addressHash,
-    addressHash,
-    txId: effectivePaymentTxId,
-    payer: proof.invoiceId,
-    amount: "0.5 HBAR",
-    metadata: {
-      standardizedAddress,
-      dpvConfirmation,
-      isValid,
-      verificationMode: effectiveMode,
-      invoiceId: proof.invoiceId,
-      paymentProvenance: effectivePaymentProvenance,
-    },
-  });
+  // Stage 6: Verify Actual USPS DPV Confirmation - ONLY DPV "Y" May Continue
+  if (!liveResult.isValid || liveResult.dpvConfirmation !== "Y") {
+    const dpvError = liveResult.error || `USPS DPV deliverability check failed with code ${liveResult.dpvConfirmation}`;
+    try {
+      const { recordStep1Oracle } = await import("@/lib/workflow/judgeWorkflow");
+      recordStep1Oracle({
+        propertyId: addressHash,
+        propertyAddress: `${standardizedAddress.street}, ${standardizedAddress.city} ${standardizedAddress.state} ${standardizedAddress.zip}`,
+        dpvConfirmation: liveResult.dpvConfirmation,
+        paymentTxId: effectivePaymentTxId,
+        isValid: false,
+        error: dpvError,
+      });
+    } catch (err) {
+      console.warn("[oracleService] Could not update workflow state on DPV failure:", err);
+    }
 
-  const provenance = effectiveMode === "LIVE_USPS" && effectivePaymentProvenance === "LIVE_ONCHAIN" && hcsAudit.provenance === "LIVE_ONCHAIN"
-    ? "LIVE_ONCHAIN"
-    : "SIMULATED";
+    return {
+      status: 422,
+      error: dpvError,
+      code: "USPS_DPV_FAILED",
+      data: {
+        isValid: false,
+        dpvConfirmation: liveResult.dpvConfirmation,
+        error: dpvError,
+        standardizedAddress,
+        addressHash,
+        verificationMode: "LIVE_USPS",
+        provenance: "LIVE_ONCHAIN",
+        paymentProvenance: "LIVE_ONCHAIN",
+        paymentTxId: effectivePaymentTxId,
+        ownershipDisclaimer: "address deliverability verification is NOT proof of property ownership",
+        hcsAudit: {
+          topicId: null,
+          sequenceNumber: null,
+          consensusTimestamp: new Date().toISOString(),
+          txId: null,
+          hashscanUrl: null,
+          event: "X402_PROPERTY_DPV_REJECTED",
+          provenance: "LIVE_ONCHAIN",
+          status: "FAILED",
+          error: "DPV check failed; HCS message skipped.",
+        },
+        verificationTimestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  // Stage 7: Hedera HCS Topic & Operator Pre-Check
+  const auditTopicId = getAuditTopicId();
+  if (!auditTopicId) {
+    const topicError = "HCS audit topic is not configured in environment (HEDERA_AUDIT_TOPIC_ID). Real HCS attestation unavailable.";
+    try {
+      const { recordStep1Oracle } = await import("@/lib/workflow/judgeWorkflow");
+      recordStep1Oracle({
+        propertyId: addressHash,
+        propertyAddress: `${standardizedAddress.street}, ${standardizedAddress.city} ${standardizedAddress.state} ${standardizedAddress.zip}`,
+        dpvConfirmation: "Y",
+        paymentTxId: effectivePaymentTxId,
+        isValid: false,
+        error: topicError,
+      });
+    } catch {}
+    return {
+      status: 503,
+      error: topicError,
+      code: "HCS_TOPIC_UNCONFIGURED",
+    };
+  }
+
+  const { isOperatorConfigured } = await import("../hedera/client");
+  if (!isOperatorConfigured()) {
+    const opError = "Hedera operator credentials are not configured in environment (HEDERA_OPERATOR_ID / HEDERA_OPERATOR_KEY). Real HCS attestation unavailable.";
+    try {
+      const { recordStep1Oracle } = await import("@/lib/workflow/judgeWorkflow");
+      recordStep1Oracle({
+        propertyId: addressHash,
+        propertyAddress: `${standardizedAddress.street}, ${standardizedAddress.city} ${standardizedAddress.state} ${standardizedAddress.zip}`,
+        dpvConfirmation: "Y",
+        paymentTxId: effectivePaymentTxId,
+        isValid: false,
+        error: opError,
+      });
+    } catch {}
+    return {
+      status: 503,
+      error: opError,
+      code: "HEDERA_OPERATOR_UNCONFIGURED",
+    };
+  }
+
+  // Stage 8: Real HCS Message Submission & Consensus Wait
+  let hcsAudit: HcsAuditReceipt;
+  try {
+    hcsAudit = await logHcsAuditEvent(
+      {
+        event: "X402_PROPERTY_DPV_VERIFIED",
+        propertyId: addressHash,
+        addressHash,
+        txId: effectivePaymentTxId || undefined,
+        payer: proof.invoiceId,
+        amount: "0.5 HBAR",
+        metadata: {
+          standardizedAddress,
+          dpvConfirmation: "Y",
+          isValid: true,
+          verificationMode: "LIVE_USPS",
+          invoiceId: proof.invoiceId,
+          paymentProvenance: "LIVE_ONCHAIN",
+          ownershipDisclaimer: "address deliverability verification is NOT proof of property ownership",
+        },
+      },
+      { requireLive: true }
+    );
+  } catch (hcsErr: any) {
+    const submitError = `HCS transaction submission failed: ${hcsErr.message || String(hcsErr)}`;
+    try {
+      const { recordStep1Oracle } = await import("@/lib/workflow/judgeWorkflow");
+      recordStep1Oracle({
+        propertyId: addressHash,
+        propertyAddress: `${standardizedAddress.street}, ${standardizedAddress.city} ${standardizedAddress.state} ${standardizedAddress.zip}`,
+        dpvConfirmation: "Y",
+        paymentTxId: effectivePaymentTxId,
+        isValid: false,
+        error: submitError,
+      });
+    } catch {}
+    return {
+      status: 502,
+      error: submitError,
+      code: "HCS_SUBMISSION_FAILED",
+    };
+  }
+
+  if (hcsAudit.status !== "CONFIRMED" || !hcsAudit.sequenceNumber || !hcsAudit.txId) {
+    const unconfirmedError = `HCS consensus receipt unconfirmed: ${hcsAudit.error || "Missing sequence number or transaction ID"}`;
+    try {
+      const { recordStep1Oracle } = await import("@/lib/workflow/judgeWorkflow");
+      recordStep1Oracle({
+        propertyId: addressHash,
+        propertyAddress: `${standardizedAddress.street}, ${standardizedAddress.city} ${standardizedAddress.state} ${standardizedAddress.zip}`,
+        dpvConfirmation: "Y",
+        paymentTxId: effectivePaymentTxId,
+        isValid: false,
+        error: unconfirmedError,
+      });
+    } catch {}
+    return {
+      status: 502,
+      error: unconfirmedError,
+      code: "HCS_SUBMISSION_FAILED",
+    };
+  }
+
+  // Stage 9: Persist Verification Evidence Server-Side
+  const ownershipDisclaimer = "address deliverability verification is NOT proof of property ownership";
 
   const resultData: OracleVerificationResult = {
-    isValid,
-    dpvConfirmation,
-    verificationMode: effectiveMode,
-    provenance,
-    paymentProvenance: effectivePaymentProvenance,
+    isValid: true,
+    dpvConfirmation: "Y",
+    verificationMode: "LIVE_USPS",
+    provenance: "LIVE_ONCHAIN",
+    paymentProvenance: "LIVE_ONCHAIN",
     paymentTxId: effectivePaymentTxId,
-    isSimulated: effectiveMode === "SIMULATED_USPS" || effectivePaymentProvenance === "SIMULATED",
-    simulationNotice,
-    error: verificationError,
+    hcsTopicId: hcsAudit.topicId,
+    hcsSequenceNumber: hcsAudit.sequenceNumber,
+    hcsTxId: hcsAudit.txId,
+    consensusTimestamp: hcsAudit.consensusTimestamp,
+    network: "hedera-testnet",
+    ownershipDisclaimer,
     standardizedAddress,
     addressHash,
     hcsAudit,
-    verificationTimestamp: new Date().toISOString(),
+    verificationTimestamp: hcsAudit.consensusTimestamp,
   };
+
+  try {
+    const { recordStep1Oracle } = await import("@/lib/workflow/judgeWorkflow");
+    recordStep1Oracle({
+      propertyId: addressHash,
+      propertyAddress: `${standardizedAddress.street}, ${standardizedAddress.city} ${standardizedAddress.state} ${standardizedAddress.zip}`,
+      dpvConfirmation: "Y",
+      paymentTxId: effectivePaymentTxId,
+      hcsTopicId: hcsAudit.topicId,
+      hcsSequenceNumber: hcsAudit.sequenceNumber,
+      hcsTxId: hcsAudit.txId,
+      consensusTimestamp: hcsAudit.consensusTimestamp,
+      network: "hedera-testnet",
+      provenance: "LIVE_ONCHAIN",
+      uspsMetadata: {
+        dpvConfirmation: "Y",
+        standardizedAddress,
+      },
+      isValid: true,
+    });
+  } catch (err) {
+    console.warn("[oracleService] Could not update workflow state:", err);
+  }
 
   return {
     status: 200,

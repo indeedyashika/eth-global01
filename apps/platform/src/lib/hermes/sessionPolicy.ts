@@ -40,7 +40,7 @@ export interface AgentSessionRecord {
   spentHbar: number;
   activeStreamsCount: number;
   signature: string;
-  signatureType: "EIP712" | "PERSONAL_SIGN" | "DEMO_MOCK";
+  signatureType: "EIP712" | "PERSONAL_SIGN";
   validatorContract: string;
   status: "ACTIVE" | "EXPIRED" | "REVOKED";
   rawMessage?: string;
@@ -73,7 +73,7 @@ export const DEFAULT_ALLOWED_SELECTORS = [
   "0x7a83d73a", // createInvestorStream(bytes32,address,uint256)
   "0x90f5c9ef", // calculateFlowRate(uint256,uint256)
   "0x38ba6156", // x402 settlement / custom actions
-  "0x12345678", // demo action
+  "0x12345678", // custom action
 ];
 
 export const SESSION_KEY_EIP712_DOMAIN = {
@@ -191,13 +191,9 @@ export function getSessionById(sessionId?: string): AgentSessionRecord | null {
 export interface SessionVerificationDetail {
   verified: boolean;
   signer: string;
-  signatureType: "EIP712" | "PERSONAL_SIGN" | "DEMO_MOCK" | "INVALID";
+  signatureType: "EIP712" | "PERSONAL_SIGN" | "INVALID";
   reason?: string;
 }
-
-// Only used for isolated test/dev when explicitly enabled via env flag. NEVER active in production!
-export const DEMO_MOCK_SIGNATURE =
-  "0x38ba6156ac3f289611f7c11f421e9c8f01b50e0d17dc79c8a9f4c3217b58a129d21e843f5451e944738590172bf4212a1c";
 
 export interface SessionPolicyValues {
   grantor?: string;
@@ -322,7 +318,7 @@ export function verifySessionSignature(
         // Fall through
       }
     } catch {
-      // Fall through to test personal_sign or demo flag
+      // Fall through to test personal_sign
     }
   }
 
@@ -340,18 +336,6 @@ export function verifySessionSignature(
     } catch {
       // Fall through
     }
-  }
-
-  // 3. Fallback for demo signature: strictly isolated behind an explicit development/demo flag.
-  const isProduction = process.env.NODE_ENV === "production";
-  const allowDemoSignatures = process.env.ALLOW_DEMO_SIGNATURES === "true";
-
-  if (!isProduction && allowDemoSignatures && signature === DEMO_MOCK_SIGNATURE) {
-    return {
-      verified: true,
-      signer: grantor,
-      signatureType: "DEMO_MOCK",
-    };
   }
 
   return {
@@ -754,7 +738,7 @@ export function validateUserOp(
     if (userOp.callData && userOp.callData.length >= 10) {
       const execSelector = userOp.callData.slice(0, 10).toLowerCase();
       let callTarget: string | undefined;
-      let callValue = 0n;
+      let callValue = BigInt(0);
       let callSelector: string | undefined;
 
       // execute(address,uint256,bytes) -> 0xb61d27f6

@@ -63,33 +63,28 @@ export function PropertyTokenizeModal({
       }
 
       const challenge = await unpaidRes.json();
-      const invoiceId = challenge.x402?.invoiceId || `inv_${Date.now()}`;
-
-      // Require Wallet Signature for x402 micropayment settlement
-      let paymentProofTx = "";
-      const rawProvider = getMetaMaskProvider();
-      if (rawProvider) {
-        setVerificationStep("Step 2: 402 intercepted! Requesting x402 payment signature in your wallet...");
-        const provider = new BrowserProvider(rawProvider);
-        const signer = await provider.getSigner();
-        const signerAddress = await signer.getAddress();
-
-        const messageToSign = [
-          "[Prism 8] Hedera x402 Micropayment Settlement",
-          `Invoice ID: ${invoiceId}`,
-          `Payee: ${challenge.x402?.payee || "Hedera Treasury"}`,
-          "Amount: 0.5 HBAR equivalent",
-          `Property: ${street}, ${city}, ${state} ${zip}`,
-          `Payer: ${signerAddress}`,
-          `Timestamp: ${new Date().toISOString()}`,
-        ].join("\n");
-
-        const signature = await signer.signMessage(messageToSign);
-        setWalletPaymentSig(signature);
-        paymentProofTx = signature;
-      } else {
-        paymentProofTx = `SIMULATED_PAYMENT`;
+      const invoiceId = challenge.x402?.invoiceId;
+      if (!invoiceId) {
+        throw new Error("Invalid x402 challenge: missing invoiceId from oracle service.");
       }
+
+      setVerificationStep("Step 2: 402 intercepted! Settling real 0.5 HBAR micropayment on Hedera...");
+      const settleRes = await fetch("/api/x402/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceId,
+          payee: challenge.x402?.payee,
+          amount: challenge.x402?.amount,
+        }),
+      });
+      const settleData = await settleRes.json();
+      if (!settleData.success || !settleData.txId) {
+        throw new Error(
+          `x402 live settlement failed: ${settleData.error || "Missing operator credentials for Hedera settlement"}`
+        );
+      }
+      const paymentProofTx = settleData.txId;
 
       setVerificationStep("Step 3: Submitting signed payment proof & executing USPS DPV oracle check...");
       const paidRes = await fetch("/api/x402/property-oracle", {
@@ -114,8 +109,7 @@ export function PropertyTokenizeModal({
         );
       }
 
-      const modeLabel = paidData.verificationMode === "LIVE_USPS" ? "Live USPS Web Tools" : "Simulated USPS Demo Fixture";
-      setVerificationStep(`Step 4: USPS Deliverable Confirmed (DPV Code Y) via ${modeLabel}. HCS Receipt Logged!`);
+      setVerificationStep(`Step 4: USPS Deliverable Confirmed (DPV Code Y) via Live USPS Web Tools. HCS Receipt Logged!`);
       setVerificationResult(paidData);
     } catch (err: any) {
       if (err.code === 4001 || err.message?.includes("rejected") || err.message?.includes("denied")) {
@@ -508,23 +502,14 @@ export function PropertyTokenizeModal({
             <div className="flex items-center justify-between font-semibold text-black">
               <span>✓ USPS DPV Verified: {verificationResult.standardizedAddress?.street}</span>
               <div className="flex items-center gap-1.5">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
-                  verificationResult.verificationMode === "LIVE_USPS"
-                    ? "bg-green-100 text-green-900 border-green-300"
-                    : "bg-neutral-200 text-neutral-800 border-neutral-300"
-                }`}>
-                  {verificationResult.verificationMode === "LIVE_USPS" ? "LIVE USPS" : "SIMULATED USPS"}
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono border bg-green-100 text-green-900 border-green-300">
+                  LIVE USPS
                 </span>
                 <span className="px-2 py-0.5 rounded bg-neutral-200 text-black text-[10px] border border-neutral-300">
                   CODE {verificationResult.dpvConfirmation}
                 </span>
               </div>
             </div>
-            {verificationResult.simulationNotice && (
-              <p className="text-[10px] text-neutral-500 font-mono italic">
-                Notice: {verificationResult.simulationNotice}
-              </p>
-            )}
             <p className="text-[11px] text-neutral-600 font-mono">
               Hash: {verificationResult.addressHash?.slice(0, 24)}...
             </p>

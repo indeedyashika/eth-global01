@@ -54,8 +54,8 @@ export async function POST(request: Request) {
 
   const action =
     flow === "identity"
-      ? (process.env.WORLD_IDENTITY_ACTION ?? "identity-check-demo")
-      : (process.env.WORLD_ACTION ?? "selfie-check-demo");
+      ? (process.env.WORLD_IDENTITY_ACTION ?? "identity-check")
+      : (process.env.WORLD_ACTION ?? "selfie-check");
 
   try {
     const { sig, nonce, createdAt, expiresAt } = signRequest({

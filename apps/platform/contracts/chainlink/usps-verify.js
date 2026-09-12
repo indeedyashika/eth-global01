@@ -16,8 +16,10 @@ if (!street || !city || !state || !zip) {
   throw new Error("Missing required address arguments: street, city, state, zip");
 }
 
-// In production, USPS_USER_ID is passed securely via Chainlink Functions Secrets.
-const uspsUserId = secrets.uspsUserId || "DEMO_USPS_USER";
+if (!secrets || !secrets.uspsUserId) {
+  throw new Error("USPS_USER_ID_REQUIRED: Missing USPS API user ID in Chainlink Functions secrets.");
+}
+const uspsUserId = secrets.uspsUserId;
 
 // Build USPS WebTools Address Validation XML query
 const xmlPayload = `<AddressValidateRequest USERID="${uspsUserId}">
@@ -46,24 +48,20 @@ try {
   });
 
   if (uspsResponse.error || uspsResponse.status !== 200) {
-    // Graceful fallback for testnet demo if USPS API rate-limits
-    isValid = !street.toLowerCase().includes("invalid");
-    dpvCode = isValid ? "Y" : "N";
+    throw new Error(`USPS_API_ERROR: HTTP ${uspsResponse.status || "error"}`);
+  }
+
+  const text = uspsResponse.data;
+  // Parse DPV Confirmation: Y = deliverable, D = missing secondary/apt, S = default address, N = not deliverable
+  if (text.includes("<DPVConfirmation>Y</DPVConfirmation>")) {
+    isValid = true;
+    dpvCode = "Y";
   } else {
-    const text = uspsResponse.data;
-    // Parse DPV Confirmation: Y = deliverable, D = missing secondary/apt, S = default address, N = not deliverable
-    if (text.includes("<DPVConfirmation>Y</DPVConfirmation>")) {
-      isValid = true;
-      dpvCode = "Y";
-    } else {
-      isValid = false;
-      dpvCode = "N";
-    }
+    isValid = false;
+    dpvCode = "N";
   }
 } catch (e) {
-  // Offline / mock fallback for testing
-  isValid = !street.toLowerCase().includes("invalid");
-  dpvCode = isValid ? "Y" : "N";
+  throw new Error(`USPS_VERIFICATION_FAILED: ${e.message}`);
 }
 
 // Compute deterministic keccak256 address hash for smart contract verification

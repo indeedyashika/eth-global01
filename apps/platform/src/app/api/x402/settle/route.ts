@@ -66,19 +66,16 @@ export async function POST(req: NextRequest) {
       invoiceId,
       payee: invoice.payee,
       amountTinybars: invoice.amountTinybars,
-      simulationRequested: Boolean(simulation),
     });
 
-    if (!result.success) {
+    if (!result.success || !result.txId) {
       return NextResponse.json(result, { status: 400 });
     }
 
-    // Only a confirmed SDK receipt, or an explicit server-side simulation,
-    // may change invoice state. Failed transactions leave it UNPAID.
     recordInvoiceSettlement(
       result.invoiceId,
       result.txId,
-      result.provenance,
+      "LIVE_ONCHAIN",
       result.amountTinybars
     );
 

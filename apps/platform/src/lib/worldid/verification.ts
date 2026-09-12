@@ -44,8 +44,8 @@ export class WorldProofError extends Error {
 
 export function expectedWorldAction(check: "selfie" | "identity"): string {
   return check === "selfie"
-    ? process.env.WORLD_ACTION ?? "selfie-check-demo"
-    : process.env.WORLD_IDENTITY_ACTION ?? "identity-check-demo";
+    ? process.env.WORLD_ACTION ?? "selfie-check"
+    : process.env.WORLD_IDENTITY_ACTION ?? "identity-check";
 }
 
 export function getWorldError(payload: WorldVerificationResponse) {

@@ -111,10 +111,9 @@ async function runTests() {
   try {
     delete process.env.PROPERTY_REGISTRY_ADDRESS;
     delete process.env.YIELD_VAULT_ADDRESS;
-    process.env.PRISM_CONTRACT_MODE = "SIMULATED";
 
-    const simStatus = contractDeploymentStatus();
-    assert(simStatus.every((c) => c.state === "SIMULATED" && c.address === null), "SIMULATED mode must report simulated state with null addresses");
+    const unconfiguredStatus = contractDeploymentStatus();
+    assert(unconfiguredStatus.every((c) => c.state === "COMPILED_ONLY" && c.address === null), "Unconfigured mode must report COMPILED_ONLY with null addresses");
 
     process.env.PRISM_CONTRACT_MODE = "LIVE";
     assert.throws(

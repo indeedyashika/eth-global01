@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       rawBody?.invoiceId ||
       undefined;
     const provenance =
-      (req.headers.get("x-payment-provenance") || rawBody?.provenance) as "LIVE_ONCHAIN" | "SIMULATED" | undefined;
+      (req.headers.get("x-payment-provenance") || rawBody?.provenance) as "LIVE_ONCHAIN" | undefined;
 
     const proof =
       paymentTx !== undefined || invoiceId !== undefined || provenance !== undefined
@@ -47,7 +47,24 @@ export async function POST(req: NextRequest) {
     }
 
     if (result.status === 503) {
-      return NextResponse.json({ error: result.error, status: 503 }, { status: 503 });
+      return NextResponse.json(
+        { error: result.error, code: result.code || "USPS_CREDENTIALS_REQUIRED", status: 503 },
+        { status: 503 }
+      );
+    }
+
+    if (result.status === 502) {
+      return NextResponse.json(
+        { error: result.error, code: result.code || "HCS_SUBMISSION_FAILED", status: 502 },
+        { status: 502 }
+      );
+    }
+
+    if (result.status === 422) {
+      return NextResponse.json(
+        { error: result.error, code: result.code || "USPS_DPV_FAILED", status: 422, data: result.data },
+        { status: 422 }
+      );
     }
 
     if (result.status === 400) {

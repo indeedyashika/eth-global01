@@ -374,156 +374,23 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
   return getToken(params.id)!;
 }
 
-const DEFAULT_DEMO_TOKENS: TokenRecord[] = [
-  {
-    id: "0.0.4491823",
-    blockchain: "HEDERA",
-    network: "testnet",
-    name: "456 Oak Avenue Luxury Residences",
-    symbol: "OAK456",
-    tokenType: "FUNGIBLE",
-    decimals: 0,
-    initialSupply: "1000",
-    supplyType: "FINITE",
-    maxSupply: "1000",
-    treasuryAccountId: "0.0.4491823",
-    assetCategory: "real-estate",
-    memo: "Miami FL 33101 · USPS DPV Validated · $3,800/mo Superfluid CFA Yield · Base Sepolia Stream: 0xcfA132E353cB4E398080B9700609bb008eceB125",
-    compliance: {
-      kycRequired: true,
-      freezeDefault: false,
-      wipeEnabled: true,
-      pauseEnabled: true,
-      worldIdRequired: true,
-      worldIdSelfieCheck: true,
-      worldIdMinimumAge: 18,
-      worldIdNationality: undefined,
-      livenessEnabled: true,
-      livenessPeriodSeconds: 604800,
-    },
-    customFee: null,
-    keys: {
-      admin: true,
-      kyc: true,
-      freeze: true,
-      wipe: true,
-      pause: true,
-      supply: true,
-      feeSchedule: false,
-    },
-    paused: false,
-    createTxId: "0.0.4491823@1789066000.000000000",
-    hashscanUrl: "https://hashscan.io/testnet/token/0.0.4491823",
-    explorerUrl: "https://hashscan.io/testnet/token/0.0.4491823",
-    explorerName: "HashScan",
-    createdAt: "2026-09-07T12:00:00.000Z",
-  },
-  {
-    id: "0x71C8401E25687352f20D235F8d7fD1A392cf99a8",
-    blockchain: "EVM",
-    network: "sepolia",
-    name: "789 Brickell Bay Penthouse",
-    symbol: "BRK789",
-    tokenType: "FUNGIBLE",
-    decimals: 18,
-    initialSupply: "10000",
-    supplyType: "FINITE",
-    maxSupply: "10000",
-    treasuryAccountId: "0x89205A3A3b2A69De6Dbf7f01ED13B2108B2c43e7",
-    assetCategory: "real-estate",
-    memo: "Miami FL 33131 · USPS DPV Validated · $12,500/mo Rent · The Graph Studio Indexed",
-    compliance: {
-      kycRequired: true,
-      freezeDefault: false,
-      wipeEnabled: true,
-      pauseEnabled: true,
-      worldIdRequired: true,
-      worldIdSelfieCheck: true,
-      worldIdMinimumAge: 18,
-      worldIdNationality: undefined,
-      livenessEnabled: false,
-      livenessPeriodSeconds: undefined,
-    },
-    customFee: null,
-    keys: {
-      admin: true,
-      kyc: true,
-      freeze: true,
-      wipe: true,
-      pause: true,
-      supply: true,
-      feeSchedule: false,
-    },
-    paused: false,
-    createTxId: "0x1e0d77de7d53b824bd0d925cc768efc21bff74cfc51f8ced8f45298fc337f4f2",
-    hashscanUrl: "https://sepolia.etherscan.io/tx/0x1e0d77de7d53b824bd0d925cc768efc21bff74cfc51f8ced8f45298fc337f4f2",
-    explorerUrl: "https://sepolia.etherscan.io/tx/0x1e0d77de7d53b824bd0d925cc768efc21bff74cfc51f8ced8f45298fc337f4f2",
-    explorerName: "Etherscan",
-    createdAt: "2026-09-07T12:00:00.000Z",
-  },
-  {
-    id: "0.0.5258180",
-    blockchain: "HEDERA",
-    network: "testnet",
-    name: "101 Ocean Drive Beachfront Villa",
-    symbol: "OCN101",
-    tokenType: "FUNGIBLE",
-    decimals: 0,
-    initialSupply: "5000",
-    supplyType: "FINITE",
-    maxSupply: "5000",
-    treasuryAccountId: "0.0.5258180",
-    assetCategory: "real-estate",
-    memo: "Miami Beach FL 33139 · USPS DPV Validated · $8,200/mo Rental Pool · HCS Topic 0.0.4491823",
-    compliance: {
-      kycRequired: true,
-      freezeDefault: false,
-      wipeEnabled: true,
-      pauseEnabled: true,
-      worldIdRequired: true,
-      worldIdSelfieCheck: true,
-      worldIdMinimumAge: undefined,
-      worldIdNationality: undefined,
-      livenessEnabled: false,
-      livenessPeriodSeconds: undefined,
-    },
-    customFee: null,
-    keys: {
-      admin: true,
-      kyc: true,
-      freeze: true,
-      wipe: true,
-      pause: true,
-      supply: true,
-      feeSchedule: false,
-    },
-    paused: false,
-    createTxId: "0.0.5258180@1789065900.000000000",
-    hashscanUrl: "https://hashscan.io/testnet/token/0.0.5258180",
-    explorerUrl: "https://hashscan.io/testnet/token/0.0.5258180",
-    explorerName: "HashScan",
-    createdAt: "2026-09-07T12:00:00.000Z",
-  },
-];
-
 export function getToken(id: string): TokenRecord | null {
   try {
     const row = getDb().prepare("SELECT * FROM tokens WHERE id = ?").get(id) as TokenRow | undefined;
     if (row) return mapToken(row);
   } catch (err) {
-    console.warn("[repo] getToken db error, checking demo tokens:", err);
+    console.warn("[repo] getToken db error:", err);
   }
-  return DEFAULT_DEMO_TOKENS.find((t) => t.id === id) ?? null;
+  return null;
 }
 
 export function listTokens(): TokenRecord[] {
   try {
     const rows = getDb().prepare("SELECT * FROM tokens ORDER BY created_at DESC").all() as TokenRow[];
-    const mapped = rows.map(mapToken);
-    return mapped.length > 0 ? mapped : DEFAULT_DEMO_TOKENS;
+    return rows.map(mapToken);
   } catch (err) {
-    console.warn("[repo] listTokens db error, falling back to demo tokens:", err);
-    return DEFAULT_DEMO_TOKENS;
+    console.warn("[repo] listTokens db error:", err);
+    return [];
   }
 }
 
@@ -1032,7 +899,7 @@ export function insertEvent(params: {
   detail?: Record<string, unknown> | null;
   txId?: string | null;
   hashscanUrl?: string | null;
-  provenance?: "LIVE_ONCHAIN" | "SIMULATED" | "FIXTURE" | null;
+  provenance?: "LIVE_ONCHAIN" | null;
 }): void {
   getDb()
     .prepare(

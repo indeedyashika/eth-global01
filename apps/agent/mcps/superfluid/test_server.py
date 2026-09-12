@@ -62,23 +62,33 @@ class TestSuperfluidMcp(unittest.TestCase):
         with self.assertRaises(SuperfluidValidationError):
             validate_flow_rate(2**96)
 
-    def test_create_yield_stream_simulated_mode(self):
-        """Verify that when live credentials are absent, simulated mode returns null hashes and SIMULATED provenance."""
-        result = create_yield_stream(
-            token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
-            receiver="0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-            flow_rate=1620370370370,
-            property_id="prop_456_oak_ave",
-        )
+    def _mock_live(self):
+        ctx = {
+            "w3": MagicMock(),
+            "account": MagicMock(address="0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"),
+            "forwarder_address": "0xcfA132E353cB4E398080B9700609bb008eceB125",
+        }
+        res = {
+            "success": True,
+            "status": "EXECUTED",
+            "provenance": "LIVE_ONCHAIN",
+            "txHash": "0x89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+            "basescanUrl": "https://sepolia.basescan.org/tx/0x89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+            "network": "Base Sepolia (84532)",
+            "blockNumber": 1234567,
+        }
+        return patch("server.get_live_execution_context", return_value=(ctx, None)), patch("server._execute_live_forwarder", return_value=res)
 
-        self.assertTrue(result.get("success"))
-        self.assertEqual(result.get("status"), "SIMULATED")
-        self.assertEqual(result.get("provenance"), "SIMULATED")
-        self.assertIsNone(result.get("txHash"), "txHash must be null in simulated mode")
-        self.assertIsNone(result.get("basescanUrl"), "basescanUrl must be null in simulated mode")
-        self.assertEqual(result.get("flowRate"), 1620370370370)
-        self.assertIn("simulationReason", result)
-        self.assertFalse(result.get("idempotent"))
+    def test_create_yield_stream_unconfigured_fails_closed(self):
+        """Verify that when live credentials are absent, operation fails closed with SuperfluidError."""
+        with self.assertRaises(SuperfluidError) as ctx:
+            create_yield_stream(
+                token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
+                receiver="0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+                flow_rate=1620370370370,
+                property_id="prop_456_oak_ave",
+            )
+        self.assertIn("LIVE_EXECUTION_UNAVAILABLE", str(ctx.exception))
 
     def test_create_yield_stream_rejects_invalid_inputs(self):
         """Verify that create_yield_stream rejects invalid flow rates and identical sender/receiver."""
@@ -133,33 +143,35 @@ class TestSuperfluidMcp(unittest.TestCase):
                 property_id="prop_nonexistent",
             )
 
-        # Create stream under session_A
-        create_yield_stream(
-            token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
-            receiver=receiver,
-            flow_rate=1000,
-            property_id="prop_auth_test",
-            session_id="session_A",
-        )
-
-        # Attempt to modify under unauthorized session_B
-        with self.assertRaises(SuperfluidAuthorizationError):
-            update_flow_rate(
+        p1, p2 = self._mock_live()
+        with p1, p2:
+            # Create stream under session_A
+            create_yield_stream(
                 token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
                 receiver=receiver,
-                flow_rate=2000,
+                flow_rate=1000,
                 property_id="prop_auth_test",
-                session_id="session_B",
+                session_id="session_A",
             )
 
-        # Attempt to delete under unauthorized session_B
-        with self.assertRaises(SuperfluidAuthorizationError):
-            delete_stream(
-                token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
-                receiver=receiver,
-                property_id="prop_auth_test",
-                session_id="session_B",
-            )
+            # Attempt to modify under unauthorized session_B
+            with self.assertRaises(SuperfluidAuthorizationError):
+                update_flow_rate(
+                    token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
+                    receiver=receiver,
+                    flow_rate=2000,
+                    property_id="prop_auth_test",
+                    session_id="session_B",
+                )
+
+            # Attempt to delete under unauthorized session_B
+            with self.assertRaises(SuperfluidAuthorizationError):
+                delete_stream(
+                    token_address="0x42bb40bF79730451B11f6De1CbA222F17b87Afd7",
+                    receiver=receiver,
+                    property_id="prop_auth_test",
+                    session_id="session_B",
+                )
 
     def test_idempotent_operations(self):
         """Verify that repeat operations with identical parameters return idempotent confirmations."""
@@ -167,32 +179,34 @@ class TestSuperfluidMcp(unittest.TestCase):
         receiver = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
         prop = "prop_idempotent"
 
-        # 1. Create stream
-        res1 = create_yield_stream(token, receiver, 1500, prop)
-        self.assertFalse(res1.get("idempotent"))
+        p1, p2 = self._mock_live()
+        with p1, p2:
+            # 1. Create stream
+            res1 = create_yield_stream(token, receiver, 1500, prop)
+            self.assertFalse(res1.get("idempotent"))
 
-        # 2. Re-create stream with identical parameters -> idempotent
-        res2 = create_yield_stream(token, receiver, 1500, prop)
-        self.assertTrue(res2.get("idempotent"))
-        self.assertEqual(res2.get("flowRate"), 1500)
+            # 2. Re-create stream with identical parameters -> idempotent
+            res2 = create_yield_stream(token, receiver, 1500, prop)
+            self.assertTrue(res2.get("idempotent"))
+            self.assertEqual(res2.get("flowRate"), 1500)
 
-        # 3. Update stream to new flow rate
-        res3 = update_flow_rate(token, receiver, 2500, prop)
-        self.assertFalse(res3.get("idempotent"))
-        self.assertEqual(res3.get("flowRate"), 2500)
+            # 3. Update stream to new flow rate
+            res3 = update_flow_rate(token, receiver, 2500, prop)
+            self.assertFalse(res3.get("idempotent"))
+            self.assertEqual(res3.get("flowRate"), 2500)
 
-        # 4. Re-update stream with identical flow rate -> idempotent
-        res4 = update_flow_rate(token, receiver, 2500, prop)
-        self.assertTrue(res4.get("idempotent"))
+            # 4. Re-update stream with identical flow rate -> idempotent
+            res4 = update_flow_rate(token, receiver, 2500, prop)
+            self.assertTrue(res4.get("idempotent"))
 
-        # 5. Delete stream
-        res5 = delete_stream(token, receiver, prop)
-        self.assertFalse(res5.get("idempotent"))
+            # 5. Delete stream
+            res5 = delete_stream(token, receiver, prop)
+            self.assertFalse(res5.get("idempotent"))
 
-        # 6. Re-delete stream -> idempotent
-        res6 = delete_stream(token, receiver, prop)
-        self.assertTrue(res6.get("idempotent"))
-        self.assertEqual(res6.get("status"), "STREAM_ALREADY_CLOSED")
+            # 6. Re-delete stream -> idempotent
+            res6 = delete_stream(token, receiver, prop)
+            self.assertTrue(res6.get("idempotent"))
+            self.assertEqual(res6.get("status"), "STREAM_ALREADY_CLOSED")
 
     @patch("server.get_live_execution_context")
     @patch("server._execute_live_forwarder")
@@ -271,8 +285,10 @@ class TestSuperfluidMcp(unittest.TestCase):
         token = "0x42bb40bF79730451B11f6De1CbA222F17b87Afd7"
         receiver = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 
-        create_yield_stream(token, receiver, 1000000000000, "prop_1")
-        create_yield_stream(token, receiver, 2000000000000, "prop_2")
+        p1, p2 = self._mock_live()
+        with p1, p2:
+            create_yield_stream(token, receiver, 1000000000000, "prop_1")
+            create_yield_stream(token, receiver, 2000000000000, "prop_2")
 
         balance_info = get_stream_balance(token, receiver)
         self.assertTrue(balance_info.get("success"))

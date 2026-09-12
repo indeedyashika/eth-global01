@@ -74,7 +74,7 @@ export interface CreateTokenResult {
     supply: boolean;
     feeSchedule: boolean;
   };
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance: "LIVE_ONCHAIN";
 }
 
 /**
@@ -94,13 +94,9 @@ export async function createToken(params: CreateTokenParams): Promise<CreateToke
   };
 
   if (!isOperatorConfigured()) {
-    return {
-      tokenId: null,
-      txId: null,
-      hashscanUrl: null,
-      keys,
-      provenance: "SIMULATED",
-    };
+    throw new Error(
+      "HEDERA_OPERATOR_UNCONFIGURED: Cannot deploy token to Hedera testnet without operator credentials."
+    );
   }
 
   const client = getOperatorClient();
@@ -169,7 +165,7 @@ export async function isAssociated(tokenId: string, accountId: string): Promise<
 interface TxResult {
   txId: string | null;
   hashscanUrl: string | null;
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance: "LIVE_ONCHAIN";
 }
 
 // The Hedera SDK's Transaction subclasses are self-referencing generics (e.g.

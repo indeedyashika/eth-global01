@@ -8,6 +8,10 @@ import { TheGraphInspectorModal } from "./TheGraphInspectorModal";
 
 export interface AgenticSafetyCockpitProps {
   onWorkflowComplete?: (result: any) => void;
+  onGuardrailBlocked?: (result: any) => void;
+  monthlyRent?: number;
+  propertyAddress?: string;
+  isLocked?: boolean;
 }
 
 const VALIDATOR_MODULE_ADDRESS = "0x7579C0de00000000000000000000000000007579";
@@ -29,7 +33,13 @@ async function parseSafeJson<T = any>(res: Response): Promise<T> {
   }
 }
 
-export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpitProps) {
+export function AgenticSafetyCockpit({
+  onWorkflowComplete,
+  onGuardrailBlocked,
+  monthlyRent = 5000,
+  propertyAddress = "456 Oak Avenue, Miami FL 33101",
+  isLocked = false,
+}: AgenticSafetyCockpitProps) {
   const evm = useEvmWallet();
 
   const [session, setSession] = useState<any | null>(null);
@@ -247,11 +257,11 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
           sessionId: session.sessionId,
           action: "FULL_TOKENIZATION_AND_YIELD_PIPELINE",
           property: {
-            street: "456 Oak Avenue",
+            street: propertyAddress.split(",")[0] || "456 Oak Avenue",
             city: "Miami",
             state: "FL",
             zip: "33101",
-            monthlyRent: 3800,
+            monthlyRent: monthlyRent || 5000,
             shares: 1000,
           },
           simulateMalicious: false,
@@ -276,6 +286,7 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
 
   // 3. Test Cryptographic Guardrail (Simulate Rogue AI Action)
   const handleSimulateRogueAction = async () => {
+    if (isLocked) return;
     if (!session?.sessionId) {
       setError("No active session key. Please click 'Grant Session Key (EIP-712)' to authorize Hermes first.");
       return;
@@ -299,6 +310,9 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
       const data = await parseSafeJson(res);
       if (res.status === 403) {
         setGuardrailAlert(data);
+        if (onGuardrailBlocked) {
+          onGuardrailBlocked(data);
+        }
       } else {
         setError("Guardrail failed to intercept rogue action.");
       }
@@ -311,7 +325,16 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
   const budgetPercent = session && session.constraints.maxSpendHbar > 0 ? (remainingHbar / session.constraints.maxSpendHbar) * 100 : 0;
 
   return (
-    <div className="bg-white border border-neutral-300 p-5 sm:p-6 shadow-sm font-mono text-black space-y-5 w-full">
+    <div className="relative bg-white border border-neutral-300 p-5 sm:p-6 shadow-sm font-mono text-black space-y-5 w-full">
+      {isLocked && (
+        <div className="absolute inset-0 bg-white/90 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center border border-neutral-300">
+          <span className="text-2xl mb-2">🔒</span>
+          <span className="text-sm font-bold text-black uppercase tracking-wider">Step 7 Locked</span>
+          <p className="text-xs text-neutral-600 mt-1 max-w-md">
+            Complete Steps 1-6 (Cap Table &amp; Consensus Ledger) to unlock the Hermes Autonomous Mission Cockpit.
+          </p>
+        </div>
+      )}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-200 pb-4">
         <div>
@@ -413,7 +436,7 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
         </div>
       </div>
 
-      {/* Safety Demonstration Button */}
+      {/* Safety Guardrail Verification Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 border border-neutral-300 bg-neutral-50 text-xs">
         <div className="space-y-0.5">
           <div className="font-bold text-xs text-black">Audit / Safety Benchmark</div>
@@ -425,7 +448,7 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
           onClick={handleSimulateRogueAction}
           className="px-4 py-2 border border-black bg-white text-black hover:bg-neutral-100 transition text-xs font-bold cursor-pointer shrink-0"
         >
-          🛡️ Test Guardrail (Simulate Rogue Action)
+          🛡️ Test Guardrail (Verify Rogue Action Rejection)
         </button>
       </div>
 
@@ -480,14 +503,12 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
               </span>
               <span
                 className={`px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase border ${
-                  (executionResult.missionStatus || "SIMULATED") === "EXECUTED"
+                  (executionResult.missionStatus || "FAILED") === "EXECUTED"
                     ? "bg-black text-white border-black"
-                    : (executionResult.missionStatus || "SIMULATED") === "FAILED"
-                    ? "bg-red-50 text-red-700 border-red-500"
-                    : "bg-neutral-100 text-black border-neutral-400"
+                    : "bg-red-50 text-red-700 border-red-500"
                 }`}
               >
-                MISSION {executionResult.missionStatus || "SIMULATED"}
+                MISSION {executionResult.missionStatus || "FAILED"}
               </span>
             </div>
             <span className="text-[10px] font-mono text-neutral-600 bg-white border border-neutral-200 px-1.5 py-0.5">
@@ -560,10 +581,10 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {step.provenance === "SIMULATED" || !step.txId ? (
+                    {step.provenance !== "LIVE_ONCHAIN" || !step.txId ? (
                       <div className="flex items-center gap-1.5">
-                        <span className="px-2 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-bold tracking-wider">
-                          SIMULATED
+                        <span className="px-2 py-0.5 bg-neutral-100 border border-neutral-300 text-neutral-700 text-[10px] font-bold tracking-wider">
+                          {step.status === "FAILED" ? "FAILED" : "UNCONFIRMED"}
                         </span>
                       </div>
                     ) : step.network?.includes("The Graph") ? (

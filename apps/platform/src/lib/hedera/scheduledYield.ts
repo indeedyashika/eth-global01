@@ -21,7 +21,7 @@ export interface ScheduledYieldPayoutResult {
   scheduledExecutionTime: string;
   txId: string | null;
   hashscanUrl: string | null;
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance: "LIVE_ONCHAIN";
 }
 
 export interface YieldRecipient {
@@ -86,17 +86,9 @@ export async function scheduleRecurringYieldPayout(
       hashscanUrl: hashscanTxUrl(txIdStr),
       provenance: "LIVE_ONCHAIN",
     };
-  } catch (error) {
-    return {
-      scheduleId: "SIMULATED_SCHEDULE",
-      propertyId,
-      tokenId: payoutTokenId,
-      recipientCount: recipients.length,
-      totalPayoutAmount: totalAmount,
-      scheduledExecutionTime: executionTime.toISOString(),
-      txId: null,
-      hashscanUrl: null,
-      provenance: "SIMULATED",
-    };
+  } catch (error: any) {
+    throw new Error(
+      `SCHEDULED_YIELD_FAILED: ${error.message || "Failed to schedule recurring yield payout on Hedera."}`
+    );
   }
 }

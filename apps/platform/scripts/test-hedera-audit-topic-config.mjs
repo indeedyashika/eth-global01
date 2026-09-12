@@ -131,10 +131,9 @@ try {
   assert.strictEqual(requireLiveAuditTopic(), "0.0.444444");
   console.log("  ✓ Test 4 Passed: LIVE mode validates topic presence, format, and operator decoupling.");
 
-  // Test 5: SIMULATED Mode Fallback Behavior
-  console.log("\n[Test 5] Verifying truthful SIMULATED mode when no audit topic exists...");
+  // Test 5: Fail-Closed Behavior When Unconfigured
+  console.log("\n[Test 5] Verifying truthful fail-closed behavior when no audit topic exists...");
   resetEnvironment();
-  process.env.PRISM_CONTRACT_MODE = "SIMULATED";
 
   const topicResult = await getOrCreateAuditTopic();
   assert.strictEqual(topicResult, null, "getOrCreateAuditTopic must return null when no topic or operator exists");
@@ -144,13 +143,13 @@ try {
     addressHash: "0x1234",
   });
 
-  assert.strictEqual(receipt.provenance, "SIMULATED", "Must explicitly report SIMULATED provenance");
-  assert.strictEqual(receipt.topicId, null, "topicId must strictly be null in simulation when unconfigured");
-  assert.strictEqual(receipt.txId, null, "txId must strictly be null in simulation");
-  assert.strictEqual(receipt.sequenceNumber, null, "sequenceNumber must strictly be null in simulation");
-  assert.strictEqual(receipt.hashscanUrl, null, "hashscanUrl must strictly be null in simulation");
+  assert.strictEqual(receipt.status, "FAILED", "Must report FAILED status when unconfigured");
+  assert.strictEqual(receipt.topicId, null, "topicId must strictly be null when unconfigured");
+  assert.strictEqual(receipt.txId, null, "txId must strictly be null (no fake transaction ID)");
+  assert.strictEqual(receipt.sequenceNumber, null, "sequenceNumber must strictly be null (no fake sequence)");
+  assert.strictEqual(receipt.hashscanUrl, null, "hashscanUrl must strictly be null (no fake explorer URL)");
   assert.notStrictEqual(receipt.topicId, "0.0.4491823", "Must NEVER silently use hardcoded topic 0.0.4491823");
-  console.log("  ✓ Test 5 Passed: Truthful SIMULATED mode entered without hardcoded topic fallbacks.");
+  console.log("  ✓ Test 5 Passed: Truthful fail-closed behavior without hardcoded topic fallbacks.");
 
   // Test 6: LIVE HCS Audit Fails Clearly When Topic is Missing
   console.log("\n[Test 6] Verifying live HCS audit fails clearly when topic is missing...");

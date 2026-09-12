@@ -79,13 +79,6 @@ export async function POST(req: Request) {
         kycGranted: true,
         status: "WHITELISTED",
       });
-      const demoInvestor = "0x28a8746e75304c0780e011bed21c72cd78cd535e";
-      ensureHolder(token.id, demoInvestor, demoInvestor);
-      updateHolder(token.id, demoInvestor, {
-        associated: true,
-        kycGranted: true,
-        status: "WHITELISTED",
-      });
     } catch (holderErr) {
       console.warn("Could not insert initial holders:", holderErr);
     }

@@ -10,7 +10,7 @@ import { hashscanTxUrl } from "./format";
 export interface HcsAuditEventPayload {
   event: string;
   invoiceId?: string;
-  txId?: string | null;
+  txId?: string;
   payer?: string;
   service?: string;
   amount?: string;
@@ -27,7 +27,9 @@ export interface HcsAuditReceipt {
   txId: string | null;
   hashscanUrl: string | null;
   event: string;
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
+  provenance: "LIVE_ONCHAIN";
+  status?: "CONFIRMED" | "FAILED";
+  error?: string;
 }
 
 export interface LogHcsAuditOptions {
@@ -68,12 +70,6 @@ export function getAuditTopicId(): string | null {
 }
 
 export function requireLiveAuditTopic(): string {
-  const isLive = (process.env.PRISM_CONTRACT_MODE ?? "SIMULATED").toUpperCase() === "LIVE";
-  if (!isLive) {
-    const topicId = getAuditTopicId();
-    return topicId ?? "";
-  }
-
   const topicId = process.env.HEDERA_AUDIT_TOPIC_ID?.trim();
   if (!topicId) {
     throw new Error(
@@ -128,9 +124,7 @@ export async function logHcsAuditEvent(
   options?: LogHcsAuditOptions
 ): Promise<HcsAuditReceipt> {
   const timestamp = payload.timestamp ?? new Date().toISOString();
-  const isLiveRequested =
-    Boolean(options?.requireLive) ||
-    (process.env.PRISM_CONTRACT_MODE ?? "SIMULATED").toUpperCase() === "LIVE";
+  const isLiveRequested = Boolean(options?.requireLive);
 
   const topicIdStr = await getOrCreateAuditTopic();
 
@@ -140,7 +134,6 @@ export async function logHcsAuditEvent(
         "Live HCS audit failed: HEDERA_AUDIT_TOPIC_ID is not configured and live topic creation was unavailable."
       );
     }
-    // Explicitly enter SIMULATED mode without hardcoded topic
     return {
       topicId: null,
       sequenceNumber: null,
@@ -148,7 +141,9 @@ export async function logHcsAuditEvent(
       txId: null,
       hashscanUrl: null,
       event: payload.event,
-      provenance: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
+      status: "FAILED",
+      error: "HCS audit topic is not configured in environment (HEDERA_AUDIT_TOPIC_ID).",
     };
   }
 
@@ -183,6 +178,7 @@ export async function logHcsAuditEvent(
       hashscanUrl: hashscanTxUrl(txIdStr),
       event: payload.event,
       provenance: "LIVE_ONCHAIN",
+      status: "CONFIRMED",
     };
   } catch (error) {
     if (isLiveRequested) {
@@ -197,7 +193,9 @@ export async function logHcsAuditEvent(
       txId: null,
       hashscanUrl: null,
       event: payload.event,
-      provenance: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
+      status: "FAILED",
+      error: `HCS message submission failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

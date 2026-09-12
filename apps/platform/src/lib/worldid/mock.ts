@@ -31,14 +31,7 @@ export async function verifyWorldId(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   proof?: WorldIdProof
 ): Promise<WorldIdVerifyResult> {
-  // TODO(real integration): replace with IDKit's verifyCloudProof(proof, app_id, action)
-  // and persist the returned nullifier_hash to prevent a single human from verifying twice.
-  await new Promise((resolve) => setTimeout(resolve, 300)); // pretend we called out to World ID
-
-  return {
-    verified: true,
-    verifiedAt: new Date().toISOString(),
-    nullifierHash: `stub_${Buffer.from(accountId).toString("hex").slice(0, 24)}`,
-    note: "MOCKED — replace lib/worldid/mock.ts with a real IDKit verifyCloudProof() call before demoing compliance to judges as production-ready.",
-  };
+  throw new Error(
+    "WORLD_ID_INTEGRATION_REQUIRED: Real IDKit verification must be configured. Synthetic or mock verification is strictly disabled."
+  );
 }

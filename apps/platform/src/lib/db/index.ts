@@ -51,6 +51,7 @@ function openDb(): Database.Database {
   migrateHolderWorldIdProofs(db);
   migrateHolderLivenessState(db);
   migrateWorldIdVerificationQueue(db);
+  migrateJudgeWorkflowState(db);
   seedDatabase(db);
 
   return db;
@@ -197,6 +198,21 @@ function migrateTokenCompliancePolicy(db: Database.Database): void {
 
   for (const [name, definition] of additions) {
     if (!columns.has(name)) db.exec(`ALTER TABLE tokens ADD COLUMN ${name} ${definition}`);
+  }
+}
+
+function migrateJudgeWorkflowState(db: Database.Database): void {
+  const columns = new Set(
+    (db.pragma("table_info(judge_workflow_state)") as Array<{ name: string }>).map((column) => column.name)
+  );
+  const additions = [
+    ["oracle_hcs_tx", "TEXT"],
+    ["oracle_provenance", "TEXT DEFAULT 'LIVE_ONCHAIN'"],
+    ["oracle_ownership_disclaimer", "TEXT DEFAULT 'address deliverability verification is NOT proof of property ownership'"],
+  ] as const;
+
+  for (const [name, definition] of additions) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE judge_workflow_state ADD COLUMN ${name} ${definition}`);
   }
 }
 

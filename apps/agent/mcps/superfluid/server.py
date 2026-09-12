@@ -337,9 +337,9 @@ def create_yield_stream(
         ):
             return {
                 "success": True,
-                "status": existing.get("status", "SIMULATED"),
+                "status": existing.get("status", "ACTIVE"),
                 "action": "STREAM_OPENED",
-                "provenance": existing.get("provenance", "SIMULATED"),
+                "provenance": existing.get("provenance", "LIVE_ONCHAIN"),
                 "propertyId": property_id,
                 "receiver": valid_receiver,
                 "flowRate": valid_flow_rate,
@@ -353,69 +353,34 @@ def create_yield_stream(
 
     live_ctx, live_reason = get_live_execution_context()
 
-    if live_ctx is not None:
-        exec_sender = sender_clean or live_ctx["account"].address
-        live_result = _execute_live_forwarder(
-            live_ctx,
-            action="create",
-            token=token,
-            sender=exec_sender,
-            receiver=valid_receiver,
-            flow_rate=valid_flow_rate,
+    if live_ctx is None:
+        raise SuperfluidError(
+            f"LIVE_EXECUTION_UNAVAILABLE: Cannot execute on-chain Superfluid CFA stream. Prerequisite check failed: {live_reason}"
         )
-        if not live_result.get("success"):
-            return {
-                **live_result,
-                "propertyId": property_id,
-                "receiver": valid_receiver,
-                "flowRate": valid_flow_rate,
-                "token": token,
-                "idempotent": False,
-            }
 
-        stream_data = {
-            "propertyId": property_id,
-            "token": token,
-            "sender": exec_sender,
-            "receiver": valid_receiver,
-            "flowRate": valid_flow_rate,
-            "monthlyRentEquivUsd": (
-                round(valid_flow_rate * 2592000 / 1e18, 2)
-                if valid_flow_rate > 1e12
-                else round(valid_flow_rate * 2592000 / 1e6, 2)
-            ),
-            "startedAt": int(time.time()),
-            "status": "ACTIVE",
-            "provenance": "LIVE_ONCHAIN",
-            "txHash": live_result["txHash"],
-            "basescanUrl": live_result["basescanUrl"],
-            "network": live_result["network"],
-            "sessionId": session_id,
-        }
-        _active_streams[stream_key] = stream_data
-        _sync_stream_to_platform(stream_data)
-
+    exec_sender = sender_clean or live_ctx["account"].address
+    live_result = _execute_live_forwarder(
+        live_ctx,
+        action="create",
+        token=token,
+        sender=exec_sender,
+        receiver=valid_receiver,
+        flow_rate=valid_flow_rate,
+    )
+    if not live_result.get("success"):
         return {
-            "success": True,
-            "status": "EXECUTED",
-            "action": "STREAM_OPENED",
-            "provenance": "LIVE_ONCHAIN",
+            **live_result,
             "propertyId": property_id,
             "receiver": valid_receiver,
             "flowRate": valid_flow_rate,
             "token": token,
-            "txHash": live_result["txHash"],
-            "basescanUrl": live_result["basescanUrl"],
-            "network": live_result["network"],
             "idempotent": False,
         }
 
-    # Truthful SIMULATED path: live execution unavailable, no fake receipts generated
-    sim_sender = sender_clean or CFA_FORWARDER_ADDRESS
     stream_data = {
         "propertyId": property_id,
         "token": token,
-        "sender": sim_sender,
+        "sender": exec_sender,
         "receiver": valid_receiver,
         "flowRate": valid_flow_rate,
         "monthlyRentEquivUsd": (
@@ -425,10 +390,10 @@ def create_yield_stream(
         ),
         "startedAt": int(time.time()),
         "status": "ACTIVE",
-        "provenance": "SIMULATED",
-        "txHash": None,
-        "basescanUrl": None,
-        "network": "Base Sepolia (Simulated)",
+        "provenance": "LIVE_ONCHAIN",
+        "txHash": live_result["txHash"],
+        "basescanUrl": live_result["basescanUrl"],
+        "network": live_result["network"],
         "sessionId": session_id,
     }
     _active_streams[stream_key] = stream_data
@@ -436,17 +401,16 @@ def create_yield_stream(
 
     return {
         "success": True,
-        "status": "SIMULATED",
+        "status": "EXECUTED",
         "action": "STREAM_OPENED",
-        "provenance": "SIMULATED",
+        "provenance": "LIVE_ONCHAIN",
         "propertyId": property_id,
         "receiver": valid_receiver,
         "flowRate": valid_flow_rate,
         "token": token,
-        "txHash": None,
-        "basescanUrl": None,
-        "network": "Base Sepolia (Simulated)",
-        "simulationReason": live_reason or "Live execution credentials not provided.",
+        "txHash": live_result["txHash"],
+        "basescanUrl": live_result["basescanUrl"],
+        "network": live_result["network"],
         "idempotent": False,
     }
 
@@ -501,9 +465,9 @@ def update_flow_rate(
     if stream.get("flowRate") == valid_flow_rate:
         return {
             "success": True,
-            "status": stream.get("provenance", "SIMULATED"),
+            "status": stream.get("status", "ACTIVE"),
             "action": "STREAM_UPDATED",
-            "provenance": stream.get("provenance", "SIMULATED"),
+            "provenance": stream.get("provenance", "LIVE_ONCHAIN"),
             "propertyId": property_id,
             "receiver": valid_receiver,
             "flowRate": valid_flow_rate,
@@ -517,71 +481,50 @@ def update_flow_rate(
 
     live_ctx, live_reason = get_live_execution_context()
 
-    if live_ctx is not None:
-        exec_sender = sender or stream.get("sender") or live_ctx["account"].address
-        live_result = _execute_live_forwarder(
-            live_ctx,
-            action="update",
-            token=token,
-            sender=exec_sender,
-            receiver=valid_receiver,
-            flow_rate=valid_flow_rate,
+    if live_ctx is None:
+        raise SuperfluidError(
+            f"LIVE_EXECUTION_UNAVAILABLE: Cannot execute on-chain Superfluid CFA stream update. Prerequisite check failed: {live_reason}"
         )
-        if not live_result.get("success"):
-            return {
-                **live_result,
-                "propertyId": property_id,
-                "receiver": valid_receiver,
-                "flowRate": valid_flow_rate,
-                "token": token,
-                "idempotent": False,
-            }
 
-        stream["flowRate"] = valid_flow_rate
-        stream["updatedAt"] = int(time.time())
-        stream["txHash"] = live_result["txHash"]
-        stream["basescanUrl"] = live_result["basescanUrl"]
-        stream["provenance"] = "LIVE_ONCHAIN"
-        stream["network"] = live_result["network"]
-        _sync_stream_to_platform(stream)
-
+    exec_sender = sender or stream.get("sender") or live_ctx["account"].address
+    live_result = _execute_live_forwarder(
+        live_ctx,
+        action="update",
+        token=token,
+        sender=exec_sender,
+        receiver=valid_receiver,
+        flow_rate=valid_flow_rate,
+    )
+    if not live_result.get("success"):
         return {
-            "success": True,
-            "status": "EXECUTED",
-            "action": "STREAM_UPDATED",
-            "provenance": "LIVE_ONCHAIN",
+            **live_result,
             "propertyId": property_id,
             "receiver": valid_receiver,
             "flowRate": valid_flow_rate,
             "token": token,
-            "txHash": live_result["txHash"],
-            "basescanUrl": live_result["basescanUrl"],
-            "network": live_result["network"],
             "idempotent": False,
         }
 
-    # Truthful SIMULATED path: update local registry, no fake receipts
     stream["flowRate"] = valid_flow_rate
     stream["updatedAt"] = int(time.time())
-    stream["txHash"] = None
-    stream["basescanUrl"] = None
-    stream["provenance"] = "SIMULATED"
-    stream["network"] = "Base Sepolia (Simulated)"
+    stream["txHash"] = live_result["txHash"]
+    stream["basescanUrl"] = live_result["basescanUrl"]
+    stream["provenance"] = "LIVE_ONCHAIN"
+    stream["network"] = live_result["network"]
     _sync_stream_to_platform(stream)
 
     return {
         "success": True,
-        "status": "SIMULATED",
+        "status": "EXECUTED",
         "action": "STREAM_UPDATED",
-        "provenance": "SIMULATED",
+        "provenance": "LIVE_ONCHAIN",
         "propertyId": property_id,
         "receiver": valid_receiver,
         "flowRate": valid_flow_rate,
         "token": token,
-        "txHash": None,
-        "basescanUrl": None,
-        "network": "Base Sepolia (Simulated)",
-        "simulationReason": live_reason or "Live execution credentials not provided.",
+        "txHash": live_result["txHash"],
+        "basescanUrl": live_result["basescanUrl"],
+        "network": live_result["network"],
         "idempotent": False,
     }
 
@@ -631,7 +574,7 @@ def delete_stream(
             "success": True,
             "status": "STREAM_ALREADY_CLOSED",
             "action": "STREAM_DELETED",
-            "provenance": stream.get("provenance", "SIMULATED"),
+            "provenance": stream.get("provenance", "LIVE_ONCHAIN"),
             "propertyId": property_id,
             "receiver": valid_receiver,
             "txHash": None,
@@ -643,67 +586,47 @@ def delete_stream(
 
     live_ctx, live_reason = get_live_execution_context()
 
-    if live_ctx is not None:
-        exec_sender = sender or stream.get("sender") or live_ctx["account"].address
-        live_result = _execute_live_forwarder(
-            live_ctx,
-            action="delete",
-            token=token,
-            sender=exec_sender,
-            receiver=valid_receiver,
-            flow_rate=0,
+    if live_ctx is None:
+        raise SuperfluidError(
+            f"LIVE_EXECUTION_UNAVAILABLE: Cannot execute on-chain Superfluid CFA stream deletion. Prerequisite check failed: {live_reason}"
         )
-        if not live_result.get("success"):
-            return {
-                **live_result,
-                "propertyId": property_id,
-                "receiver": valid_receiver,
-                "idempotent": False,
-            }
 
-        stream["status"] = "CLOSED"
-        stream["flowRate"] = 0
-        stream["closedAt"] = int(time.time())
-        stream["txHash"] = live_result["txHash"]
-        stream["basescanUrl"] = live_result["basescanUrl"]
-        stream["provenance"] = "LIVE_ONCHAIN"
-        stream["network"] = live_result["network"]
-        _sync_stream_to_platform(stream)
-
+    exec_sender = sender or stream.get("sender") or live_ctx["account"].address
+    live_result = _execute_live_forwarder(
+        live_ctx,
+        action="delete",
+        token=token,
+        sender=exec_sender,
+        receiver=valid_receiver,
+        flow_rate=0,
+    )
+    if not live_result.get("success"):
         return {
-            "success": True,
-            "status": "EXECUTED",
-            "action": "STREAM_DELETED",
-            "provenance": "LIVE_ONCHAIN",
+            **live_result,
             "propertyId": property_id,
             "receiver": valid_receiver,
-            "txHash": live_result["txHash"],
-            "basescanUrl": live_result["basescanUrl"],
-            "network": live_result["network"],
             "idempotent": False,
         }
 
-    # Truthful SIMULATED path
     stream["status"] = "CLOSED"
     stream["flowRate"] = 0
     stream["closedAt"] = int(time.time())
-    stream["txHash"] = None
-    stream["basescanUrl"] = None
-    stream["provenance"] = "SIMULATED"
-    stream["network"] = "Base Sepolia (Simulated)"
+    stream["txHash"] = live_result["txHash"]
+    stream["basescanUrl"] = live_result["basescanUrl"]
+    stream["provenance"] = "LIVE_ONCHAIN"
+    stream["network"] = live_result["network"]
     _sync_stream_to_platform(stream)
 
     return {
         "success": True,
-        "status": "SIMULATED",
+        "status": "EXECUTED",
         "action": "STREAM_DELETED",
-        "provenance": "SIMULATED",
+        "provenance": "LIVE_ONCHAIN",
         "propertyId": property_id,
         "receiver": valid_receiver,
-        "txHash": None,
-        "basescanUrl": None,
-        "network": "Base Sepolia (Simulated)",
-        "simulationReason": live_reason or "Live execution credentials not provided.",
+        "txHash": live_result["txHash"],
+        "basescanUrl": live_result["basescanUrl"],
+        "network": live_result["network"],
         "idempotent": False,
     }
 

@@ -187,6 +187,17 @@ export async function POST(req: NextRequest) {
         spend: 100.0,
         flow: 50000,
       });
+      try {
+        const { recordStep8Compromise } = await import("@/lib/workflow/judgeWorkflow");
+        recordStep8Compromise({
+          attackAction: maliciousAction,
+          blocked: true,
+          rejectionCode: "CRYPTOGRAPHIC_POLICY_VIOLATION_HALTED",
+          rejectionReason: validation.reason,
+        });
+      } catch (err) {
+        console.warn("[agent/execute] Could not update step 8 workflow state:", err);
+      }
       return NextResponse.json(
         {
           success: false,
@@ -231,35 +242,57 @@ export async function POST(req: NextRequest) {
     const { createX402Invoice, handlePropertyOracleRequest, recordInvoiceSettlement } = await import("@/lib/x402/oracleService");
     const { executeX402Payment } = await import("@/lib/x402/settleService");
 
-    const invoice = createX402Invoice();
-    const settlement = await executeX402Payment({
-      invoiceId: invoice.invoiceId,
-      payee: invoice.payee,
-      amountTinybars: invoice.amount,
-    });
+    let invoice: any = null;
+    let settlement: any = {
+      success: false,
+      txId: null,
+      provenance: "LIVE_ONCHAIN",
+      hashscanUrl: null,
+      error: "x402 settlement unconfigured",
+    };
+    let oracleResult: any = {
+      status: 503,
+      error: "x402 settlement unconfigured",
+      data: null,
+    };
 
-    if (settlement.success) {
-      recordInvoiceSettlement(
-        invoice.invoiceId,
-        settlement.txId,
-        settlement.provenance,
-        settlement.amountTinybars
-      );
-    }
-
-    const oracleResult = await handlePropertyOracleRequest(
-      {
-        street: property.street,
-        city: property.city,
-        state: property.state,
-        zip: property.zip,
-      },
-      {
+    try {
+      invoice = createX402Invoice();
+      settlement = await executeX402Payment({
         invoiceId: invoice.invoiceId,
-        paymentTx: settlement.txId,
-        provenance: settlement.provenance,
+        payee: invoice.payee,
+        amountTinybars: invoice.amount,
+      });
+
+      if (settlement.success && settlement.txId) {
+        recordInvoiceSettlement(
+          invoice.invoiceId,
+          settlement.txId,
+          settlement.provenance,
+          settlement.amountTinybars
+        );
       }
-    );
+
+      oracleResult = await handlePropertyOracleRequest(
+        {
+          street: property.street,
+          city: property.city,
+          state: property.state,
+          zip: property.zip,
+        },
+        {
+          invoiceId: invoice.invoiceId,
+          paymentTx: settlement.txId,
+          provenance: settlement.provenance,
+        }
+      );
+    } catch (err: any) {
+      oracleResult = {
+        status: 503,
+        error: err?.message || "x402 payment unconfigured or execution failed",
+        data: null,
+      };
+    }
 
     const isOracleSuccess = oracleResult.status === 200 && oracleResult.data?.isValid === true;
     const oracleData = oracleResult.data;
@@ -268,103 +301,160 @@ export async function POST(req: NextRequest) {
       stepNumber: 1,
       name: "Autonomous x402 Micropayment Settlement & USPS Validation",
       network: "Hedera Testnet (x402 Rail)",
-      status: !isOracleSuccess
+      status: !isOracleSuccess || settlement.provenance !== "LIVE_ONCHAIN"
         ? "FAILED"
-        : settlement.provenance === "LIVE_ONCHAIN"
-        ? "EXECUTED"
-        : "SIMULATED",
-      provenance: oracleData?.provenance ?? settlement.provenance,
+        : "EXECUTED",
+      provenance: isOracleSuccess && settlement.provenance === "LIVE_ONCHAIN" ? "LIVE_ONCHAIN" : null,
       txId: settlement.txId,
       explorerUrl: settlement.hashscanUrl,
-      detail: isOracleSuccess
+      detail: isOracleSuccess && settlement.provenance === "LIVE_ONCHAIN"
         ? `Settled 0.5 HBAR micropayment via Blocky402 (${settlement.provenance}). USPS verified (${oracleData?.verificationMode}: Code ${oracleData?.dpvConfirmation}).`
-        : `USPS Oracle rejected address: ${oracleData?.error || oracleResult.error || "Address not deliverable"}.`,
+        : `USPS Oracle or settlement failed: ${oracleData?.error || oracleResult.error || "Live settlement failed"}.`,
       timestamp: new Date().toISOString(),
     });
 
     // Step B: Hedera Consensus Service (HCS) Verifiable Audit Logging
     const addressHash = oracleData?.addressHash ?? `0x${crypto.createHash("sha256").update(`${property.street}|${property.city}|${property.state}|${property.zip}`).digest("hex")}`;
     const hcsAudit = oracleData?.hcsAudit;
+    const isHcsConfirmed = hcsAudit?.status === "CONFIRMED" && hcsAudit?.provenance === "LIVE_ONCHAIN";
     
     steps.push({
       stepNumber: 2,
       name: "Hedera Consensus Service (HCS) Audit Anchor",
       network: hcsAudit?.topicId
         ? `Hedera Testnet (HCS Topic ${hcsAudit.topicId})`
-        : "Hedera Testnet (HCS Simulated)",
-      status: hcsAudit?.provenance === "LIVE_ONCHAIN" ? "EXECUTED" : "SIMULATED",
-      provenance: hcsAudit?.provenance ?? "SIMULATED",
+        : "Hedera Testnet (HCS Unconfigured)",
+      status: isHcsConfirmed ? "EXECUTED" : "FAILED",
+      provenance: isHcsConfirmed ? "LIVE_ONCHAIN" : null,
       txId: hcsAudit?.txId ?? null,
       sequenceNumber: hcsAudit?.sequenceNumber ?? null,
       explorerUrl: hcsAudit?.hashscanUrl ?? null,
-      detail: hcsAudit?.sequenceNumber
+      detail: isHcsConfirmed
         ? `Consensus sequence #${hcsAudit.sequenceNumber} anchored on HCS Topic ${hcsAudit.topicId}.`
         : hcsAudit?.topicId
-        ? `Consensus sequence anchored on HCS Topic ${hcsAudit.topicId}.`
-        : "Consensus sequence recorded in simulated HCS audit mode.",
+        ? `Failed to anchor consensus message on HCS Topic ${hcsAudit.topicId}.`
+        : "HCS Topic unconfigured (HEDERA_AUDIT_TOPIC_ID missing).",
       timestamp: hcsAudit?.consensusTimestamp ?? new Date().toISOString(),
     });
 
     // Step C: The Graph Dynamic Shareholder Discovery
+    let step3Status = "FAILED";
+    let step3Detail = "The Graph endpoint unconfigured (SUBGRAPH_URL missing).";
+    let step3Provenance: "LIVE_ONCHAIN" | null = null;
+    if (process.env.SUBGRAPH_URL) {
+      try {
+        const query = `{
+          tokens(first: 5) {
+            id
+            symbol
+            totalSupply
+          }
+        }`;
+        const resp = await fetch(process.env.SUBGRAPH_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query }),
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.data) {
+            step3Status = "EXECUTED";
+            step3Provenance = "LIVE_ONCHAIN";
+            step3Detail = `Discovered ${json.data.tokens?.length ?? 0} indexed tokens on Subgraph.`;
+          } else {
+            step3Detail = `Subgraph query returned GraphQL errors: ${JSON.stringify(json.errors)}`;
+          }
+        } else {
+          step3Detail = `Subgraph endpoint HTTP error: ${resp.status}`;
+        }
+      } catch (err: any) {
+        step3Detail = `Subgraph query failed: ${err.message}`;
+      }
+    }
+
     steps.push({
       stepNumber: 3,
       name: "The Graph Studio Holder Discovery",
       network: "The Graph (Sepolia Indexer)",
-      status: "SIMULATED",
-      provenance: "SIMULATED",
+      status: step3Status,
+      provenance: step3Provenance,
       txId: null,
       explorerUrl: null,
-      detail: "Hermes queried live Subgraph holders. Proportional cap table derived for rental distribution.",
+      detail: step3Detail,
       timestamp: new Date().toISOString(),
     });
 
     // Step D: Superfluid CFA Per-Second Yield Stream Creation
+    let step4Status = "FAILED";
+    let step4Detail = "Superfluid CFA Forwarder unconfigured (SUPERFLUID_CFA_FORWARDER_ADDRESS missing).";
+    let step4Provenance: "LIVE_ONCHAIN" | null = null;
+    if (process.env.SUPERFLUID_CFA_FORWARDER_ADDRESS && process.env.BASE_SEPOLIA_RPC_URL && process.env.AGENT_PRIVATE_KEY) {
+      step4Detail = "Superfluid stream configuration present but requires on-chain execution with agent key.";
+    }
+
     steps.push({
       stepNumber: 4,
       name: "Superfluid CFA Per-Second Yield Stream Creation",
       network: "Base Sepolia (Superfluid CFA)",
-      status: "SIMULATED",
-      provenance: "SIMULATED",
+      status: step4Status,
+      provenance: step4Provenance,
       txId: null,
       explorerUrl: null,
-      detail: `CFA Stream active: +$${((property.monthlyRent * 0.1) / 2592000).toFixed(8)}/sec into investor wallet.`,
+      detail: step4Detail,
       timestamp: new Date().toISOString(),
     });
 
-    // Commit spend to session
-    const updatedSession = commitSessionSpend(sessionId, 0.5, true);
+    // Commit spend to session only if live payment succeeded
+    let updatedSession = session;
+    if (settlement.success && settlement.provenance === "LIVE_ONCHAIN") {
+      updatedSession = commitSessionSpend(sessionId, 0.5, true);
+    }
 
-    // Persist event into database audit ledger
-    try {
-      const { insertEvent } = await import("@/lib/db/repo");
-      insertEvent({
-        tokenId: "0.0.4491823",
-        type: "TRANSFER",
-        detail: {
-          action: "HERMES_AUTONOMOUS_PIPELINE_EXECUTED",
-          executionId,
-          propertyAddress: `${property.street}, ${property.city}, ${property.state} ${property.zip}`,
-          x402Settlement: "0.5 HBAR",
-          streamRate: `+$${((property.monthlyRent * 0.1) / 2592000).toFixed(8)}/sec`,
-        },
-        txId: null,
-        hashscanUrl: null,
-        provenance: "SIMULATED",
-      });
-    } catch (e) {
-      console.warn("[agent execute] Could not record event in sqlite:", e);
+    // Persist event into database audit ledger only for real execution
+    if (settlement.success && settlement.provenance === "LIVE_ONCHAIN") {
+      try {
+        const { insertEvent } = await import("@/lib/db/repo");
+        insertEvent({
+          tokenId: property.tokenId || "UNASSIGNED",
+          type: "TRANSFER",
+          detail: {
+            action: "HERMES_AUTONOMOUS_PIPELINE_EXECUTED",
+            executionId,
+            propertyAddress: `${property.street}, ${property.city}, ${property.state} ${property.zip}`,
+            x402Settlement: "0.5 HBAR",
+          },
+          txId: settlement.txId,
+          hashscanUrl: settlement.hashscanUrl,
+          provenance: "LIVE_ONCHAIN",
+        });
+      } catch (e) {
+        console.warn("[agent execute] Could not record event in sqlite:", e);
+      }
     }
 
     const missionStatus = steps.every(
       (s) => s.status === "EXECUTED" && s.provenance === "LIVE_ONCHAIN"
     )
       ? "EXECUTED"
-      : steps.some((s) => s.status === "FAILED")
-      ? "FAILED"
-      : "SIMULATED";
+      : "FAILED";
+
+    if (missionStatus === "EXECUTED") {
+      try {
+        const { recordStep7Hermes } = await import("@/lib/workflow/judgeWorkflow");
+        recordStep7Hermes({
+          sessionId,
+          executionId,
+          txHash: settlement.txId || null,
+          action,
+          success: true,
+        });
+      } catch (e) {
+        console.warn("[agent execute] could not record step 7 in workflow state:", e);
+      }
+    }
 
     return NextResponse.json({
-      success: true,
+      success: missionStatus === "EXECUTED",
       missionStatus,
       executionId,
       agentId: "hermes-agentic-operator",
@@ -372,7 +462,7 @@ export async function POST(req: NextRequest) {
       property: {
         address: `${property.street}, ${property.city}, ${property.state} ${property.zip}`,
         addressHash,
-        dpvConfirmation: "Y",
+        dpvConfirmation: oracleData?.dpvConfirmation ?? null,
       },
       sessionProof: {
         standard: "ERC-7579 Modular Account Abstraction",
@@ -380,12 +470,12 @@ export async function POST(req: NextRequest) {
         signatureType: updatedSession.signatureType,
         grantor: updatedSession.grantor,
         agent: updatedSession.agentAddress,
-        delegatedBudget: `${updatedSession.constraints.maxSpendHbar} HBAR`,
+        delegatedBudget: `${updatedSession.constraints.maxSpendHbar ?? updatedSession.constraints.maxSpend ?? 0} HBAR`,
         spentBudget: `${updatedSession.spentHbar} HBAR`,
-        remainingBudget: `${Math.max(0, updatedSession.constraints.maxSpendHbar - updatedSession.spentHbar).toFixed(2)} HBAR`,
+        remainingBudget: `${Math.max(0, (updatedSession.constraints.maxSpendHbar ?? updatedSession.constraints.maxSpend ?? 0) - updatedSession.spentHbar).toFixed(2)} HBAR`,
         expiresAt: new Date(updatedSession.expiresAt).toISOString(),
       },
-      sessionRemainingHbar: Math.max(0, updatedSession.constraints.maxSpendHbar - updatedSession.spentHbar),
+      sessionRemainingHbar: Math.max(0, (updatedSession.constraints.maxSpendHbar ?? updatedSession.constraints.maxSpend ?? 0) - updatedSession.spentHbar),
       steps,
       completedAt: new Date().toISOString(),
     });

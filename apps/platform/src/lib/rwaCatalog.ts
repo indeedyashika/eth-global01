@@ -27,7 +27,7 @@ export const RWA_TOKENS: RwaToken[] = [
     assetType: "Renewable infrastructure",
     jurisdiction: "Portugal",
     description:
-      "A demo note backed by a portfolio of rooftop solar installations across Lisbon.",
+      "A green note backed by a portfolio of rooftop solar installations across Lisbon.",
     reference: "PT-RWA-001",
     maturity: "36 months",
     accent: "ocean",
@@ -57,7 +57,7 @@ export const RWA_TOKENS: RwaToken[] = [
     assetType: "Residential real estate",
     jurisdiction: "European Union",
     description:
-      "A fractional demo instrument linked to rental income from student housing assets.",
+      "A fractional instrument linked to rental income from student housing assets.",
     reference: "EU-RWA-204",
     maturity: "48 months",
     accent: "clay",
@@ -75,7 +75,7 @@ export const RWA_TOKENS: RwaToken[] = [
     assetType: "Government securities",
     jurisdiction: "United States",
     description:
-      "A mock short-duration treasury product restricted to adult US nationals.",
+      "A short-duration treasury product restricted to adult US nationals.",
     reference: "US-RWA-091",
     maturity: "12 months",
     accent: "ink",
@@ -94,7 +94,7 @@ export const RWA_TOKENS: RwaToken[] = [
     assetType: "Commercial real estate",
     jurisdiction: "United States",
     description:
-      "A gated demo fund combining a live selfie check with document-backed eligibility.",
+      "A gated fund combining a live selfie check with document-backed eligibility.",
     reference: "US-RWA-312",
     maturity: "60 months",
     accent: "violet",

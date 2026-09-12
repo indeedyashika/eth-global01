@@ -16,20 +16,18 @@ export interface SettleRequestParams {
   invoiceId: string;
   payee: string;
   amountTinybars: string | bigint;
-  simulationRequested?: boolean;
 }
 
 export interface SettleResult {
   success: boolean;
   txId: string | null;
   hashscanUrl: string | null;
-  provenance: "LIVE_ONCHAIN" | "SIMULATED";
-  status: "CONFIRMED" | "SIMULATED" | "FAILED";
+  provenance: "LIVE_ONCHAIN";
+  status: "CONFIRMED" | "FAILED";
   invoiceId: string;
   amountTinybars: string;
   error?: string;
   code?: string;
-  simulationNotice?: string;
 }
 
 const HEDERA_ACCOUNT_REGEX = /^\d+\.\d+\.\d+$/;
@@ -41,7 +39,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
       success: false,
       txId: null,
       hashscanUrl: null,
-      provenance: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
       status: "FAILED",
       invoiceId: "",
       amountTinybars: "0",
@@ -57,7 +55,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
       success: false,
       txId: null,
       hashscanUrl: null,
-      provenance: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
       status: "FAILED",
       invoiceId,
       amountTinybars: "0",
@@ -78,7 +76,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
       success: false,
       txId: null,
       hashscanUrl: null,
-      provenance: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
       status: "FAILED",
       invoiceId,
       amountTinybars: "0",
@@ -87,21 +85,19 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
     };
   }
 
-  // 3. Check if actual settlement can be performed
+  // 3. Fail-closed: Ensure Hedera operator is configured for real live execution
   const isLiveConfigured = isOperatorConfigured();
-  if (params.simulationRequested || !isLiveConfigured) {
-    // If actual settlement cannot be performed: return SIMULATED, txId must be null
+  if (!isLiveConfigured) {
     return {
-      success: true,
+      success: false,
       txId: null,
       hashscanUrl: null,
-      provenance: "SIMULATED",
-      status: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
+      status: "FAILED",
       invoiceId,
       amountTinybars: amountBigInt.toString(),
-      simulationNotice: isLiveConfigured
-        ? "Explicit simulation mode requested. Settlement simulated."
-        : "Hedera operator credentials not configured in environment. Settlement simulated.",
+      error: "Hedera operator credentials are not configured in environment (HEDERA_OPERATOR_ID / HEDERA_OPERATOR_KEY). Real x402 settlement unavailable.",
+      code: "HEDERA_OPERATOR_UNCONFIGURED",
     };
   }
 
@@ -122,7 +118,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
           success: false,
           txId: null,
           hashscanUrl: null,
-          provenance: "SIMULATED",
+          provenance: "LIVE_ONCHAIN",
           status: "FAILED",
           invoiceId,
           amountTinybars: amountBigInt.toString(),
@@ -131,12 +127,11 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
         };
       }
     } catch (balErr: any) {
-      // If balance query fails due to network/operator error, report failure
       return {
         success: false,
         txId: null,
         hashscanUrl: null,
-          provenance: "SIMULATED",
+        provenance: "LIVE_ONCHAIN",
         status: "FAILED",
         invoiceId,
         amountTinybars: amountBigInt.toString(),
@@ -162,7 +157,7 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
         success: false,
         txId: null,
         hashscanUrl: null,
-        provenance: "SIMULATED",
+        provenance: "LIVE_ONCHAIN",
         status: "FAILED",
         invoiceId,
         amountTinybars: amountBigInt.toString(),
@@ -188,12 +183,14 @@ export async function executeX402Payment(params: SettleRequestParams): Promise<S
       success: false,
       txId: null,
       hashscanUrl: null,
-      provenance: "SIMULATED",
+      provenance: "LIVE_ONCHAIN",
       status: "FAILED",
       invoiceId,
       amountTinybars: amountBigInt.toString(),
-      error: `CryptoTransferTransaction execution failed: ${message}`,
-      code: timedOut ? "TRANSACTION_TIMEOUT" : "TRANSACTION_FAILURE",
+      error: timedOut
+        ? "Hedera settlement timed out while communicating with network consensus nodes."
+        : `Hedera payment execution error: ${message}`,
+      code: timedOut ? "SETTLEMENT_TIMEOUT" : "EXECUTION_ERROR",
     };
   }
 }

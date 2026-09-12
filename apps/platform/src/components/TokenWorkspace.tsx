@@ -383,7 +383,7 @@ export default function TokenWorkspace({
                   <span>↗</span>
                 </a>
               ) : (
-                <span className="text-xs text-neutral-500 font-mono">Simulated Audit Environment</span>
+                <span className="text-xs text-neutral-500 font-mono">HCS Topic Unconfigured</span>
               )}
             </div>
           </div>
@@ -394,7 +394,7 @@ export default function TokenWorkspace({
               The Graph Protocol
             </div>
             <div className="text-2xl font-bold text-black">
-              {holders.length > 0 ? `${holders.length} Active Holders` : "4 Active Holders"}
+              {holders.length > 0 ? `${holders.length} Active Holders` : "0 Active Holders"}
             </div>
             <p className="text-xs text-neutral-600 leading-relaxed">
               Hermes queries live Sepolia Subgraph indexers to discover shareholder cap tables and dynamically scale Superfluid CFA stream flows.
@@ -463,9 +463,9 @@ export default function TokenWorkspace({
             <div className="border border-neutral-300 bg-white p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
                 <div>
-                  <h3 className="text-base font-bold text-black">Tenant Rent Deposit Simulator</h3>
+                  <h3 className="text-base font-bold text-black">Tenant Rent Deposit Execution</h3>
                   <p className="text-xs text-neutral-600 mt-0.5">
-                    Deposit simulated rent to accelerate continuous Superfluid cashflow distribution for this property.
+                    Deposit on-chain rent to accelerate continuous Superfluid cashflow distribution for this property.
                   </p>
                 </div>
                 <span className="text-xs px-2 py-0.5 bg-neutral-100 border border-neutral-300 font-bold text-black">

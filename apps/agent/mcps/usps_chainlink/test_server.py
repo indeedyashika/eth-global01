@@ -22,35 +22,31 @@ class TestUspsChainlinkMcp(unittest.TestCase):
         self.assertTrue(callable(store_verified_hash))
 
     @patch("httpx.request")
-    def test_settle_simulation_never_generates_fake_tx_id(self, mock_request):
-        """Verify simulation mode strictly returns txId: None and never generates fake IDs."""
+    def test_settle_unconfirmed_fails_closed(self, mock_request):
+        """Verify unconfirmed settlement fails closed with UspsOracleError."""
         mock_settle_res = MagicMock()
         mock_settle_res.status_code = 200
         mock_settle_res.is_error = False
         mock_settle_res.json.return_value = {
-            "success": True,
+            "success": False,
             "txId": None,
             "hashscanUrl": None,
-            "provenance": "SIMULATED",
-            "status": "SIMULATED",
+            "provenance": None,
+            "status": "FAILED",
             "invoiceId": "inv_sim_999",
             "amountTinybars": "50000000",
-            "simulationNotice": "Simulation mode requested.",
         }
         mock_request.return_value = mock_settle_res
 
-        # Legitimate fixture values used only by unit tests
         challenge = {
             "invoiceId": "inv_sim_999",
             "payee": "0.0.4491823",
             "amount": "50000000",
         }
 
-        result = _settle_x402_micropayment(challenge, simulation=True)
-        self.assertIsNone(result.get("txId"), "txId must strictly be None in simulation")
-        self.assertEqual(result.get("provenance"), "SIMULATED")
-        self.assertEqual(result.get("status"), "SIMULATED")
-        self.assertEqual(result.get("invoiceId"), "inv_sim_999")
+        with self.assertRaises(UspsOracleError) as ctx:
+            _settle_x402_micropayment(challenge)
+        self.assertIn("unconfirmed result", str(ctx.exception))
 
     def test_settle_live_success_with_python_sdk(self):
         """Verify that when Hedera SDK and credentials are present, real CryptoTransfer is executed."""
@@ -84,7 +80,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
                 "payee": "0.0.4491823",
                 "amount": "50000000",
             }
-            result = _settle_x402_micropayment(challenge, simulation=False)
+            result = _settle_x402_micropayment(challenge)
             self.assertEqual(result["txId"], "0.0.12345@1741234567.890000000")
             self.assertEqual(result["provenance"], "LIVE_ONCHAIN")
             self.assertEqual(result["status"], "CONFIRMED")
@@ -110,11 +106,11 @@ class TestUspsChainlinkMcp(unittest.TestCase):
                 _settle_x402_micropayment(
                     {"invoiceId": "inv_no_receipt", "payee": "0.0.4491823", "amount": "50000000"}
                 )
-        self.assertIn("invalid or unconfirmed", str(ctx.exception))
+        self.assertTrue("unconfirmed result" in str(ctx.exception) or "invalid" in str(ctx.exception))
 
     @patch("httpx.request")
-    def test_validate_address_x402_flow_with_simulated_settlement(self, mock_request):
-        """Verify autonomous interception of HTTP 402, settlement, and truthful oracle retry."""
+    def test_validate_address_x402_flow_with_confirmed_settlement(self, mock_request):
+        """Verify autonomous interception of HTTP 402, settlement, and live oracle retry."""
         # 1. First request returns 402 Payment Required
         mock_402 = MagicMock()
         mock_402.status_code = 402
@@ -133,16 +129,16 @@ class TestUspsChainlinkMcp(unittest.TestCase):
             },
         }
 
-        # 2. Settlement request to /api/x402/settle returns simulated confirmation
+        # 2. Settlement request to /api/x402/settle returns confirmed live transaction
         mock_settle = MagicMock()
         mock_settle.status_code = 200
         mock_settle.is_error = False
         mock_settle.json.return_value = {
             "success": True,
-            "txId": None,
-            "hashscanUrl": None,
-            "provenance": "SIMULATED",
-            "status": "SIMULATED",
+            "txId": "0.0.12345@1741234567.890000000",
+            "hashscanUrl": "https://hashscan.io/testnet/transaction/0.0.12345@1741234567.890000000",
+            "provenance": "LIVE_ONCHAIN",
+            "status": "CONFIRMED",
             "invoiceId": "inv_test_12345",
             "amountTinybars": "50000000",
         }
@@ -154,10 +150,10 @@ class TestUspsChainlinkMcp(unittest.TestCase):
         mock_200.json.return_value = {
             "isValid": True,
             "dpvConfirmation": "Y",
-            "verificationMode": "SIMULATED_USPS",
-            "provenance": "SIMULATED",
-            "paymentProvenance": "SIMULATED",
-            "paymentTxId": None,
+            "verificationMode": "LIVE_USPS",
+            "provenance": "LIVE_ONCHAIN",
+            "paymentProvenance": "LIVE_ONCHAIN",
+            "paymentTxId": "0.0.12345@1741234567.890000000",
             "addressHash": "0x4ded2feea1...",
             "standardizedAddress": {
                 "street": "456 OAK AVE",
@@ -170,18 +166,18 @@ class TestUspsChainlinkMcp(unittest.TestCase):
                 "event": "X402_PAYMENT_VERIFIED",
                 "topicId": "0.0.4491823",
                 "sequenceNumber": 42,
-                "txId": None,
-                "provenance": "SIMULATED",
+                "txId": "0.0.12345@1741234567.890000000",
+                "provenance": "LIVE_ONCHAIN",
             },
         }
 
         mock_request.side_effect = [mock_402, mock_settle, mock_200]
 
-        result = validate_property_address("456 Oak Avenue", "Miami", "FL", "33101", mode="SIMULATED_USPS")
+        result = validate_property_address("456 Oak Avenue", "Miami", "FL", "33101")
         self.assertTrue(result.get("isValid"))
         self.assertEqual(result.get("dpvConfirmation"), "Y")
-        self.assertEqual(result.get("provenance"), "SIMULATED")
-        self.assertIsNone(result.get("paymentTxId"))
+        self.assertEqual(result.get("provenance"), "LIVE_ONCHAIN")
+        self.assertEqual(result.get("paymentTxId"), "0.0.12345@1741234567.890000000")
         self.assertEqual(mock_request.call_count, 3)
 
         # Verify call 2 was to /api/x402/settle
@@ -189,12 +185,12 @@ class TestUspsChainlinkMcp(unittest.TestCase):
         self.assertIn("/api/x402/settle", call2_args[1])
         self.assertEqual(call2_kwargs["json"]["invoiceId"], "inv_test_12345")
 
-        # Verify call 3 sent invoice proof without fake txId
+        # Verify call 3 sent confirmed payment proof
         call3_args, call3_kwargs = mock_request.call_args_list[2]
         self.assertIn("/api/x402/property-oracle", call3_args[1])
         self.assertEqual(call3_kwargs["headers"]["X-Payment-Invoice"], "inv_test_12345")
-        self.assertEqual(call3_kwargs["headers"]["X-Payment-Provenance"], "SIMULATED")
-        self.assertNotIn("X-Payment-Tx", call3_kwargs["headers"])
+        self.assertEqual(call3_kwargs["headers"]["X-Payment-Provenance"], "LIVE_ONCHAIN")
+        self.assertEqual(call3_kwargs["headers"]["X-Payment-Tx"], "0.0.12345@1741234567.890000000")
 
     @patch("httpx.request")
     def test_unpaid_request_settlement_failure(self, mock_request):
@@ -262,7 +258,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
         res = get_verification_status("prop_test_123")
         self.assertEqual(res["status"], "UNAVAILABLE")
         self.assertFalse(res["uspsVerified"])
-        self.assertEqual(res["provenance"], "SIMULATED")
+        self.assertIsNone(res["provenance"])
 
     @patch("httpx.request")
     def test_store_verified_hash_offline_never_fakes_anchored(self, mock_request):

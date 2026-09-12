@@ -292,8 +292,7 @@ export default function RwaMarketplace({
           </h1>
           <p className="rwa-lede">
             Explore five tokenized asset policies and run the required World ID
-            checks. This demo verifies access only — purchasing is intentionally
-            disabled.
+            compliance checks.
           </p>
         </div>
         <div className="rwa-proof-key" aria-label="Verification environments">
@@ -312,7 +311,7 @@ export default function RwaMarketplace({
 
       <div className="rwa-catalog-head">
         <div>
-          <p className="rwa-kicker">Demo market</p>
+          <p className="rwa-kicker">Catalog</p>
           <h2>Available instruments</h2>
         </div>
         <span className="rwa-no-payment">
@@ -495,7 +494,7 @@ export default function RwaMarketplace({
                   <CheckIcon checked />
                   <div>
                     <strong>No identity condition</strong>
-                    <p>This demo instrument is accessible without a World ID proof.</p>
+                    <p>This instrument is accessible without a World ID proof.</p>
                   </div>
                 </div>
               ) : (
@@ -584,7 +583,7 @@ export default function RwaMarketplace({
                     : "Complete the checks above to prove eligibility."}
                 </strong>
               </div>
-              <button type="button" disabled title="Payments are out of scope for this demo">
+              <button type="button" disabled title="Direct purchases are disabled on this view">
                 Payment disabled
               </button>
             </div>

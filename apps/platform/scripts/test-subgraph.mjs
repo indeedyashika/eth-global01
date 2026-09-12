@@ -90,14 +90,14 @@ if (existsSync(routePath)) {
     assert(typeof GET === "function", "route.ts exports callable GET handler");
     assert(typeof POST === "function", "route.ts exports callable POST handler");
 
-    // Test GET /api/subgraph behavior
+    // Test GET /api/subgraph behavior (unconfigured fail-closed)
     const getRes = await GET();
-    assert(getRes.status === 200, "GET /api/subgraph returns HTTP 200");
+    assert(getRes.status === 200, "GET /api/subgraph returns HTTP 200 status check");
     const getData = await getRes.json();
-    assert(getData.status === "ok", "GET response status is 'ok'");
+    assert(getData.status === "unconfigured" || getData.status === "ok", "GET response status is valid");
     assert(
-      getData.mode === "demonstration-mode" || getData.mode === "live-studio",
-      "GET mode indicates live-studio or demonstration-mode"
+      getData.mode === "unconfigured" || getData.mode === "live-studio",
+      "GET mode indicates live-studio or unconfigured (no demo mode)"
     );
     assert(
       Array.isArray(getData.schemaEntities) &&
@@ -105,48 +105,40 @@ if (existsSync(routePath)) {
       "GET response schemaEntities includes Token, Account, and Transfer"
     );
     assert(
-      getData.meta && typeof getData.meta.network === "string" && typeof getData.meta.block?.number === "number",
-      "GET response includes valid indexing metadata"
+      typeof getData.isLive === "boolean",
+      "GET response includes valid isLive boolean state"
     );
     assert(
-      Array.isArray(getData.data?.tokens) && getData.data.tokens.length > 0,
-      "route.ts provides reliable demo fallback tokens"
-    );
-    assert(
-      Array.isArray(getData.data?.holders) && getData.data.holders.length > 0,
-      "route.ts provides reliable demo fallback holders"
-    );
-    assert(
-      Array.isArray(getData.data?.recentTransfers) && getData.data.recentTransfers.length > 0,
-      "route.ts provides reliable demo fallback transfers"
+      getData.data === undefined,
+      "route.ts does NOT provide fabricated demo fallback tokens/holders"
     );
 
-    // Test POST /api/subgraph behavior for top_holders action
+    // Test POST /api/subgraph behavior when unconfigured: must fail-closed with 503 SUBGRAPH_UNCONFIGURED
     const postHoldersReq = new Request("http://localhost/api/subgraph", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "top_holders" }),
     });
     const postHoldersRes = await POST(postHoldersReq);
-    assert(postHoldersRes.status === 200, "POST top_holders returns HTTP 200");
+    assert(postHoldersRes.status === 503, "POST top_holders fails closed with HTTP 503 when unconfigured");
     const postHoldersData = await postHoldersRes.json();
     assert(
-      Array.isArray(postHoldersData.data?.accounts) && postHoldersData.data.accounts.length > 0,
-      "POST top_holders returns account allocations"
+      postHoldersData.code === "SUBGRAPH_UNCONFIGURED",
+      "POST top_holders returns SUBGRAPH_UNCONFIGURED error code"
     );
 
-    // Test POST /api/subgraph behavior for GraphQL queries
+    // Test POST /api/subgraph behavior for GraphQL queries: must fail-closed with 503 SUBGRAPH_UNCONFIGURED
     const postQueryReq = new Request("http://localhost/api/subgraph", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: "{ tokens { id symbol } }" }),
     });
     const postQueryRes = await POST(postQueryReq);
-    assert(postQueryRes.status === 200, "POST GraphQL query returns HTTP 200");
+    assert(postQueryRes.status === 503, "POST GraphQL query fails closed with HTTP 503 when unconfigured");
     const postQueryData = await postQueryRes.json();
     assert(
-      Boolean(postQueryData.data?.tokens && postQueryData.data?.accounts),
-      "POST GraphQL query returns structured entity data"
+      postQueryData.code === "SUBGRAPH_UNCONFIGURED",
+      "POST GraphQL query returns SUBGRAPH_UNCONFIGURED error code"
     );
   } catch (err) {
     assert(false, `API behavior validation failed: ${err.message}`);

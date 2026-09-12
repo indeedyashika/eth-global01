@@ -136,6 +136,108 @@ CREATE TABLE IF NOT EXISTS world_id_verifications (
     REFERENCES holders(token_id, account_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS judge_workflow_state (
+  id                          TEXT PRIMARY KEY DEFAULT 'current',
+  current_step                INTEGER NOT NULL DEFAULT 1,
+
+  step1_status                TEXT NOT NULL DEFAULT 'READY',
+  property_id                 TEXT,
+  property_address            TEXT,
+  oracle_verified             INTEGER NOT NULL DEFAULT 0,
+  oracle_dpv                  TEXT,
+  oracle_payment_tx           TEXT,
+  oracle_hcs_topic            TEXT,
+  oracle_hcs_seq              INTEGER,
+  oracle_hcs_tx               TEXT,
+  oracle_provenance           TEXT DEFAULT 'LIVE_ONCHAIN',
+  oracle_ownership_disclaimer TEXT DEFAULT 'address deliverability verification is NOT proof of property ownership',
+  oracle_timestamp            TEXT,
+  oracle_error                TEXT,
+
+  step2_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  rent_deposited_amount       REAL DEFAULT 0,
+  rent_deposit_tx             TEXT,
+  rent_vault_address          TEXT,
+  rent_hcs_seq                INTEGER,
+  rent_timestamp              TEXT,
+  rent_error                  TEXT,
+
+  step3_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  claim_tx                    TEXT,
+  claim_amount                REAL DEFAULT 0,
+  claim_recipient             TEXT,
+  claim_hcs_seq               INTEGER,
+  claim_timestamp             TEXT,
+  claim_error                 TEXT,
+
+  step4_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  token_id                    TEXT,
+  token_symbol                TEXT,
+  token_network               TEXT,
+  token_total_supply          TEXT,
+  workspace_inspected_at      TEXT,
+  step4_error                 TEXT,
+
+  step5_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  world_id_verified           INTEGER NOT NULL DEFAULT 0,
+  world_id_nullifier          TEXT,
+  world_id_credential_type    TEXT,
+  world_id_shares_claimed     REAL DEFAULT 0,
+  world_id_claim_tx           TEXT,
+  world_id_timestamp          TEXT,
+  world_id_error              TEXT,
+
+  step6_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  cap_table_holder_count      INTEGER DEFAULT 0,
+  consensus_ledger_seq_count  INTEGER DEFAULT 0,
+  audit_confirmed_at          TEXT,
+  step6_error                 TEXT,
+
+  step7_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  hermes_session_id           TEXT,
+  hermes_execution_id         TEXT,
+  hermes_tx_hash              TEXT,
+  hermes_action               TEXT,
+  hermes_timestamp            TEXT,
+  hermes_error                TEXT,
+
+  step8_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  compromise_attempt_action   TEXT,
+  compromise_blocked          INTEGER NOT NULL DEFAULT 0,
+  compromise_rejection_code   TEXT,
+  compromise_rejection_reason TEXT,
+  compromise_timestamp        TEXT,
+  step8_error                 TEXT,
+
+  step9_status                TEXT NOT NULL DEFAULT 'LOCKED',
+  subgraph_url                TEXT,
+  subgraph_status             TEXT,
+  subgraph_indexed_block      INTEGER,
+  subgraph_query_result       TEXT,
+  subgraph_error              TEXT,
+  subgraph_timestamp          TEXT,
+
+  updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS oracle_verifications (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id                 TEXT NOT NULL,
+  normalized_address          TEXT NOT NULL,
+  payment_proof               TEXT NOT NULL,
+  payment_status              TEXT NOT NULL,
+  usps_metadata               TEXT,
+  dpv_result                  TEXT NOT NULL,
+  hcs_topic_id                TEXT,
+  hcs_sequence_number         INTEGER,
+  hcs_tx_id                   TEXT,
+  consensus_timestamp         TEXT,
+  network                     TEXT NOT NULL DEFAULT 'hedera-testnet',
+  provenance                  TEXT NOT NULL DEFAULT 'LIVE_ONCHAIN',
+  ownership_disclaimer        TEXT NOT NULL DEFAULT 'address deliverability verification is NOT proof of property ownership',
+  created_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_holders_token ON holders(token_id);
 CREATE INDEX IF NOT EXISTS idx_events_token ON events(token_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_token_requests_status ON token_requests(status, created_at ASC);
@@ -144,4 +246,6 @@ CREATE INDEX IF NOT EXISTS idx_world_id_verifications_status
   ON world_id_verifications(status, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_world_id_verifications_holder
   ON world_id_verifications(token_id, account_id, check_kind, id DESC);
+CREATE INDEX IF NOT EXISTS idx_oracle_verifications_property
+  ON oracle_verifications(property_id, created_at DESC);
 `;

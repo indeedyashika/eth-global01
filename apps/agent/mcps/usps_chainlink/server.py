@@ -45,13 +45,13 @@ class UspsOracleError(RuntimeError):
     """Expose safe error messages to Hermes without breaking agent context."""
 
 
-def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = False) -> dict[str, Any]:
+def _settle_x402_micropayment(challenge: dict[str, Any]) -> dict[str, Any]:
     """Autonomously signs and settles a 0.5 HBAR micropayment on Hedera Testnet.
 
     Returns structured dict with:
-        txId: Optional[str] - The real transaction ID if confirmed live on-chain, or None if simulated.
-        provenance: str - "LIVE_ONCHAIN" or "SIMULATED"
-        status: str - "CONFIRMED", "SIMULATED", or "FAILED"
+        txId: str - The real transaction ID confirmed live on-chain.
+        provenance: str - "LIVE_ONCHAIN"
+        status: str - "CONFIRMED"
         invoiceId: str - The invoice ID being settled
     """
     invoice_id = challenge.get("invoiceId", "inv_unknown")
@@ -82,7 +82,7 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
         except ImportError:
             hiero_sdk = None
 
-    if not simulation and hiero_sdk is not None and operator_key and operator_id:
+    if hiero_sdk is not None and operator_key and operator_id:
         try:
             # Construct actual CryptoTransferTransaction in Python
             client = hiero_sdk.Client.for_testnet()
@@ -130,7 +130,6 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
         "invoiceId": invoice_id,
         "payee": payee,
         "amount": str(amount),
-        "simulation": simulation,
     }
 
     try:
@@ -141,8 +140,6 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
             status = settle_data.get("status")
             tx_id = settle_data.get("txId")
 
-            # Never let a response that merely contains a formatted transaction
-            # ID become live proof. The server must attest to a confirmed receipt.
             if provenance == "LIVE_ONCHAIN" and status == "CONFIRMED" and isinstance(tx_id, str) and tx_id:
                 return {
                     "txId": tx_id,
@@ -150,14 +147,7 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
                     "status": "CONFIRMED",
                     "invoiceId": invoice_id,
                 }
-            if provenance == "SIMULATED" and status == "SIMULATED" and tx_id is None:
-                return {
-                    "txId": None,
-                    "provenance": "SIMULATED",
-                    "status": "SIMULATED",
-                    "invoiceId": invoice_id,
-                }
-            raise UspsOracleError("Settlement service returned an invalid or unconfirmed settlement result")
+            raise UspsOracleError(f"Settlement service returned unconfirmed result: status={status}, provenance={provenance}")
         elif settle_res.is_error:
             try:
                 err_detail = settle_res.json().get("error", f"HTTP {settle_res.status_code}")
@@ -167,18 +157,12 @@ def _settle_x402_micropayment(challenge: dict[str, Any], simulation: bool = Fals
     except httpx.HTTPError as exc:
         raise UspsOracleError(f"Settlement service unreachable at {settle_url}: {exc}") from exc
 
-    # If actual settlement cannot be performed: return SIMULATED, txId must be None
-    return {
-        "txId": None,
-        "provenance": "SIMULATED",
-        "status": "SIMULATED",
-        "invoiceId": invoice_id,
-    }
+    raise UspsOracleError("Live x402 settlement failed: operator credentials or on-chain settlement service unavailable.")
 
 
 @mcp.tool()
 def validate_property_address(
-    street: str, city: str, state: str, zip: str, mode: str = "AUTO"
+    street: str, city: str, state: str, zip: str, mode: str = "LIVE_USPS"
 ) -> dict[str, Any]:
     """Validate a physical real estate property address against USPS records before tokenization.
 
@@ -191,7 +175,7 @@ def validate_property_address(
         city: City name (e.g., "Miami")
         state: Two-letter US state code (e.g., "FL")
         zip: 5-digit US ZIP code (e.g., "33101")
-        mode: Verification mode ("AUTO", "LIVE_USPS", or "SIMULATED_USPS")
+        mode: Verification mode ("LIVE_USPS")
     """
     url = f"{BASE_URL}/api/x402/property-oracle"
     headers = {
@@ -224,22 +208,21 @@ def validate_property_address(
         x402_data = body.get("x402", {})
         invoice_id = x402_data.get("invoiceId", "")
 
-        # Autonomously settle micropayment with real CryptoTransfer or explicit simulation
-        is_simulation = mode == "SIMULATED_USPS"
-        settlement = _settle_x402_micropayment(x402_data, simulation=is_simulation)
+        # Autonomously settle micropayment with real CryptoTransfer
+        settlement = _settle_x402_micropayment(x402_data)
 
         # Retry with payment authorization proof
         paid_headers = dict(headers)
         if settlement.get("txId"):
             paid_headers["X-Payment-Tx"] = settlement["txId"]
         paid_headers["X-Payment-Invoice"] = invoice_id
-        paid_headers["X-Payment-Provenance"] = settlement.get("provenance", "SIMULATED")
+        paid_headers["X-Payment-Provenance"] = settlement.get("provenance", "LIVE_ONCHAIN")
 
         # Also supply in payload for robust cross-environment delivery
         paid_payload = dict(payload)
         paid_payload["invoiceId"] = invoice_id
         paid_payload["paymentTx"] = settlement.get("txId")
-        paid_payload["provenance"] = settlement.get("provenance", "SIMULATED")
+        paid_payload["provenance"] = settlement.get("provenance", "LIVE_ONCHAIN")
 
         try:
             paid_response = httpx.request(
@@ -296,14 +279,14 @@ def get_verification_status(property_id: str) -> dict[str, Any]:
                 "propertyId": property_id,
                 "status": "UNREGISTERED",
                 "uspsVerified": False,
-                "provenance": "SIMULATED",
+                "provenance": None,
             }
         if response.is_error:
             return {
                 "propertyId": property_id,
                 "status": "UNAVAILABLE",
                 "uspsVerified": False,
-                "provenance": "SIMULATED",
+                "provenance": None,
                 "error": f"HTTP {response.status_code}",
             }
         return response.json()
@@ -312,7 +295,7 @@ def get_verification_status(property_id: str) -> dict[str, Any]:
             "propertyId": property_id,
             "status": "UNAVAILABLE",
             "uspsVerified": False,
-            "provenance": "SIMULATED",
+            "provenance": None,
             "error": f"Verification status service unavailable: {exc}",
         }
 
