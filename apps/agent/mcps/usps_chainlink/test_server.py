@@ -39,6 +39,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
         }
         mock_request.return_value = mock_settle_res
 
+        # Legitimate fixture values used only by unit tests
         challenge = {
             "invoiceId": "inv_sim_999",
             "payee": "0.0.4491823",
@@ -77,6 +78,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
                  "HEDERA_OPERATOR_KEY": "302e020100300506032b657004220420" + "00" * 16,
                  "HEDERA_OPERATOR_ID": "0.0.12345",
              }):
+            # Legitimate fixture values used only by unit tests
             challenge = {
                 "invoiceId": "inv_live_123",
                 "payee": "0.0.4491823",
@@ -104,6 +106,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
 
         with patch.dict("os.environ", {"HEDERA_OPERATOR_ID": "", "HEDERA_OPERATOR_KEY": ""}):
             with self.assertRaises(UspsOracleError) as ctx:
+                # Legitimate fixture values used only by unit tests
                 _settle_x402_micropayment(
                     {"invoiceId": "inv_no_receipt", "payee": "0.0.4491823", "amount": "50000000"}
                 )
@@ -122,6 +125,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
             "x402": {
                 "facilitator": "blocky402",
                 "network": "hedera-testnet",
+                # Legitimate fixture values used only by unit tests
                 "payee": "0.0.4491823",
                 "amount": "50000000",
                 "invoiceId": "inv_test_12345",
@@ -161,6 +165,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
                 "state": "FL",
                 "zip": "33101",
             },
+            # Legitimate fixture values used only by unit tests
             "hcsAudit": {
                 "event": "X402_PAYMENT_VERIFIED",
                 "topicId": "0.0.4491823",
@@ -203,6 +208,7 @@ class TestUspsChainlinkMcp(unittest.TestCase):
             "x402": {
                 "invoiceId": "inv_fail_123",
                 "amount": "50000000",
+                # Legitimate fixture values used only by unit tests
                 "payee": "0.0.4491823",
             },
         }

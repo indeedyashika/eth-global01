@@ -14,8 +14,11 @@ const types = {
   SessionPolicy: [
     { name: "grantor", type: "address" },
     { name: "agent", type: "address" },
-    { name: "maxSpendHbar", type: "uint256" },
-    { name: "maxFlowMonthlyUsd", type: "uint256" },
+    { name: "allowedTargets", type: "address[]" },
+    { name: "allowedSelectors", type: "bytes4[]" },
+    { name: "maxSpend", type: "uint256" },
+    { name: "maxFlow", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
     { name: "validUntil", type: "uint256" },
     { name: "nonce", type: "uint256" },
   ],
@@ -30,12 +33,26 @@ async function test() {
 
   // 2. Define Scoped Policy
   const nonce = Date.now();
-  const validUntil = Math.floor(Date.now() / 1000) + 86400; // 24 hours
+  const validAfter = Math.floor(Date.now() / 1000);
+  const validUntil = validAfter + 86400; // 24 hours
+  const allowedTargets = [
+    VALIDATOR_CONTRACT_ADDRESS,
+    "0x1111111111111111111111111111111111111111",
+    "0x2222222222222222222222222222222222222222",
+  ];
+  const allowedSelectors = [
+    "0xb4b46617",
+    "0x401826f6",
+    "0xd4116492",
+  ];
   const policyValue = {
     grantor: delegator.address,
     agent: HERMES_AGENT_ADDRESS,
-    maxSpendHbar: BigInt(5 * 1e18), // 5 HBAR
-    maxFlowMonthlyUsd: BigInt(5000), // $5,000 / mo
+    allowedTargets,
+    allowedSelectors,
+    maxSpend: BigInt(5 * 1e18), // 5 HBAR
+    maxFlow: BigInt(5000), // $5,000 / mo
+    validAfter: BigInt(validAfter),
     validUntil: BigInt(validUntil),
     nonce: BigInt(nonce),
   };

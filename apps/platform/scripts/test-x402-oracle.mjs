@@ -24,11 +24,69 @@ if (!process.env.__TSX_RUNNING__ && !process.execArgv.some((a) => a.includes("ts
 const PORT = process.env.PORT || "3088";
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
+import { pathToFileURL } from "node:url";
+
+const { NextRequest } = await import("next/server");
+
+const { POST: propertyOracleHandler } = await import(
+  pathToFileURL(path.join(platformRoot, "src/app/api/x402/property-oracle/route.ts")).href
+);
+const { POST: settleHandler } = await import(
+  pathToFileURL(path.join(platformRoot, "src/app/api/x402/settle/route.ts")).href
+);
+
+let liveServerAvailable = null;
+
+async function checkLiveServer() {
+  if (liveServerAvailable !== null) return liveServerAvailable;
+  try {
+    const probe = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ping: true }),
+      signal: AbortSignal.timeout(600),
+    });
+    liveServerAvailable = probe.status !== undefined;
+  } catch {
+    liveServerAvailable = false;
+  }
+  return liveServerAvailable;
+}
+
+/**
+ * Dual-mode API request dispatcher:
+ * Uses live HTTP fetch if a server is running at BASE_URL,
+ * or dispatches directly to Next.js route handlers in-process when offline.
+ */
+async function apiFetch(url, options = {}) {
+  const isLive = await checkLiveServer();
+  if (isLive) {
+    return fetch(url, options);
+  }
+
+  const urlObj = new URL(url, BASE_URL);
+  const pathname = urlObj.pathname;
+  const headers = new Headers(options.headers || {});
+
+  const req = new NextRequest(urlObj.toString(), {
+    method: options.method || "GET",
+    headers,
+    body: options.body,
+  });
+
+  if (pathname === "/api/x402/property-oracle") {
+    return propertyOracleHandler(req);
+  } else if (pathname === "/api/x402/settle") {
+    return settleHandler(req);
+  }
+  throw new Error(`Unmapped route for in-process dispatch: ${pathname}`);
+}
+
 async function runTests() {
   console.log("=== Testing Truthful x402 USPS Property Oracle & Payment Implementation ===");
 
-  // Step 1: Agent Services Discovery Directory
-  console.log("\n[Test 1] Verifying Agent Services Discovery Schema...");
+  // Step 1: Static Invariant & Fixture Check - Agent Services Discovery Directory
+  console.log("\n[Test 1] Verifying Agent Services Discovery Schema (Static Invariant)...");
   const wellKnownPath = path.join(platformRoot, "public", ".well-known", "agent-services.json");
   assert(fs.existsSync(wellKnownPath), "Agent services discovery file must exist");
   const directory = JSON.parse(fs.readFileSync(wellKnownPath, "utf8"));
@@ -39,9 +97,9 @@ async function runTests() {
   assert.strictEqual(oracleService.pricing.network, "hedera-testnet");
   console.log("✓ Test 1 Passed: Agent discovery directory meets specification.");
 
-  // Step 2: Unpaid Request -> HTTP 402 with Blocky402 Facilitator
+  // Step 2: Behavioral - Unpaid Request -> HTTP 402 with Blocky402 Facilitator Challenge
   console.log("\n[Test 2] Verifying unpaid request returns HTTP 402 with Blocky402 challenge...");
-  const unpaidRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const unpaidRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -61,11 +119,12 @@ async function runTests() {
   assert(unpaid.x402.amount, "Expected payment amount in tinybars");
   assert.strictEqual(unpaid.x402.displayAmount, "0.5 HBAR");
   const invoiceId = unpaid.x402.invoiceId;
+  const invoicePayee = unpaid.x402.payee;
   console.log(`✓ Test 2 Passed: 402 challenge received with invoice ${invoiceId} (${unpaid.x402.displayAmount}).`);
 
-  // Step 3: Unpaid Request with Invoice ID cannot proceed as paid
+  // Step 3: Behavioral - Unpaid Request with Invoice ID cannot proceed as paid
   console.log("\n[Test 3] Verifying unpaid request with unsettled invoice cannot proceed as paid...");
-  const unpaidRetryRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const unpaidRetryRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -84,9 +143,9 @@ async function runTests() {
   assert(unpaidRetry.error.includes("Invoice has not been settled"), "Error must state invoice has not been settled");
   console.log("✓ Test 3 Passed: Unpaid request cannot proceed as paid.");
 
-  // Step 4: Fake Transaction ID cannot be returned as live
+  // Step 4: Behavioral - Fake Transaction ID cannot be returned as live payment proof
   console.log("\n[Test 4] Verifying fake transaction IDs cannot be accepted as live payment proof...");
-  const fakeTxRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const fakeTxRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -109,11 +168,11 @@ async function runTests() {
   );
   console.log(`✓ Test 4 Passed: Fake transaction ID correctly rejected: "${fakeTxData.error}".`);
 
-  // Step 5: Server-side Settlement Validation (invalid recipient, invalid amount)
+  // Step 5: Behavioral - Server-side Settlement Validation (invalid recipient, invalid amount)
   console.log("\n[Test 5] Verifying server-side settlement validation (recipient, amount)...");
   
   // 5a. Invalid recipient format
-  const badRecipientRes = await fetch(`${BASE_URL}/api/x402/settle`, {
+  const badRecipientRes = await apiFetch(`${BASE_URL}/api/x402/settle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -128,12 +187,12 @@ async function runTests() {
   console.log("  ✓ 5a: Invalid recipient rejected with code INVALID_RECIPIENT.");
 
   // 5b. Invalid amount (negative or zero)
-  const badAmountRes = await fetch(`${BASE_URL}/api/x402/settle`, {
+  const badAmountRes = await apiFetch(`${BASE_URL}/api/x402/settle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       invoiceId,
-      payee: "0.0.4491823",
+      payee: invoicePayee,
       amount: "-100000",
     }),
   });
@@ -142,14 +201,14 @@ async function runTests() {
   assert.strictEqual(badAmountData.code, "INVALID_AMOUNT");
   console.log("  ✓ 5b: Invalid amount rejected with code INVALID_AMOUNT.");
 
-  // Step 6: Server-side Settlement Execution (simulation environment)
+  // Step 6: Behavioral & Provenance - Server-side Settlement Execution (simulation environment)
   console.log("\n[Test 6] Verifying truthful settlement execution in simulation environment...");
-  const settleRes = await fetch(`${BASE_URL}/api/x402/settle`, {
+  const settleRes = await apiFetch(`${BASE_URL}/api/x402/settle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       invoiceId,
-      payee: "0.0.4491823",
+      payee: invoicePayee,
       amount: "50000000",
       simulation: true,
     }),
@@ -164,9 +223,9 @@ async function runTests() {
   assert(settleData.simulationNotice, "Expected simulation notice");
   console.log("✓ Test 6 Passed: Settlement executed truthfully with provenance SIMULATED and txId: null.");
 
-  // Step 7: Settle and Query registered demo fixture
+  // Step 7: Behavioral & Provenance - Settle and Query registered demo fixture
   console.log("\n[Test 7] Verifying settled demo fixture returns DPV 'Y' with truthful simulated provenance...");
-  const fixtureRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const fixtureRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -195,10 +254,9 @@ async function runTests() {
   assert.strictEqual(fixtureData.hcsAudit.event, "X402_PAYMENT_VERIFIED");
   console.log(`✓ Test 7 Passed: Demo fixture verified with DPV 'Y', paymentTxId: null, and explicit SIMULATED provenance.`);
 
-  // Step 8: Settle and Query arbitrary 5-digit ZIP -> MUST NOT return DPV Y
+  // Step 8: Behavioral - Settle and Query arbitrary 5-digit ZIP -> MUST NOT return DPV Y
   console.log("\n[Test 8] Verifying arbitrary 5-digit ZIP does NOT return DPV 'Y' in simulation mode...");
-  // Obtain invoice and settle for arbitrary address test
-  const inv2Res = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const inv2Res = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -211,15 +269,16 @@ async function runTests() {
   assert.strictEqual(inv2Res.status, 402);
   const inv2 = await inv2Res.json();
   const invoice2 = inv2.x402.invoiceId;
+  const invoice2Payee = inv2.x402.payee;
 
   // Settle invoice 2
-  await fetch(`${BASE_URL}/api/x402/settle`, {
+  await apiFetch(`${BASE_URL}/api/x402/settle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ invoiceId: invoice2, simulation: true }),
+    body: JSON.stringify({ invoiceId: invoice2, payee: invoice2Payee, simulation: true }),
   });
 
-  const arbitraryRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const arbitraryRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -243,9 +302,9 @@ async function runTests() {
   assert.strictEqual(arbitraryData.provenance, "SIMULATED");
   console.log(`✓ Test 8 Passed: Arbitrary 5-digit ZIP was rejected with DPV 'N' as required.`);
 
-  // Step 9: Settle and Query explicitly invalid address -> DPV N
+  // Step 9: Behavioral - Settle and Query explicitly invalid address -> DPV N
   console.log("\n[Test 9] Verifying invalid address ('00000' / 'Fake St') is rejected...");
-  const inv3Res = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const inv3Res = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -257,14 +316,15 @@ async function runTests() {
   });
   const inv3 = await inv3Res.json();
   const invoice3 = inv3.x402.invoiceId;
+  const invoice3Payee = inv3.x402.payee;
 
-  await fetch(`${BASE_URL}/api/x402/settle`, {
+  await apiFetch(`${BASE_URL}/api/x402/settle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ invoiceId: invoice3, simulation: true }),
+    body: JSON.stringify({ invoiceId: invoice3, payee: invoice3Payee, simulation: true }),
   });
 
-  const invalidRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const invalidRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -284,9 +344,9 @@ async function runTests() {
   assert.strictEqual(invalidData.dpvConfirmation, "N", "DPV Confirmation must be 'N'");
   console.log("✓ Test 9 Passed: Invalid test address rejected with DPV 'N'.");
 
-  // Step 10: LIVE_USPS mode without credentials -> Returns HTTP 503
+  // Step 10: Behavioral - LIVE_USPS mode without credentials -> Returns HTTP 503
   console.log("\n[Test 10] Verifying explicit LIVE_USPS mode fails cleanly when credentials are absent...");
-  const inv4Res = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const inv4Res = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -298,14 +358,15 @@ async function runTests() {
   });
   const inv4 = await inv4Res.json();
   const invoice4 = inv4.x402.invoiceId;
+  const invoice4Payee = inv4.x402.payee;
 
-  await fetch(`${BASE_URL}/api/x402/settle`, {
+  await apiFetch(`${BASE_URL}/api/x402/settle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ invoiceId: invoice4, simulation: true }),
+    body: JSON.stringify({ invoiceId: invoice4, payee: invoice4Payee, simulation: true }),
   });
 
-  const liveRes = await fetch(`${BASE_URL}/api/x402/property-oracle`, {
+  const liveRes = await apiFetch(`${BASE_URL}/api/x402/property-oracle`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -326,9 +387,11 @@ async function runTests() {
   assert(liveData.error.includes("USPS_USER_ID"), "Error must mention missing USPS_USER_ID credentials");
   console.log(`✓ Test 10 Passed: LIVE_USPS mode correctly returned 503: "${liveData.error}".`);
 
-  // Step 11: Live USPS XML Parser Unit Testing
-  console.log("\n[Test 11] Verifying USPS Web Tools XML response parser...");
-  const { parseUspsXmlResponse } = await import("../src/lib/x402/oracleService.ts");
+  // Step 11: Behavioral Unit Testing - Live USPS XML Parser
+  console.log("\n[Test 11] Verifying USPS Web Tools XML response parser (Unit Behavioral)...");
+  const { parseUspsXmlResponse } = await import(
+    pathToFileURL(path.join(platformRoot, "src/lib/x402/oracleService.ts")).href
+  );
 
   // 11a. Valid USPS XML response (DPV Y)
   const validXml = `

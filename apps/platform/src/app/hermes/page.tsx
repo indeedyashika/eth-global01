@@ -29,7 +29,7 @@ const INITIAL_LOGS: LogEntry[] = [
     id: "init-3",
     timestamp: "00:00:03",
     source: "HCS",
-    content: "Hedera Consensus Service listening on Topic 0.0.4491823. HIP-423 scheduler ready.",
+    content: "Hedera Consensus Service audit listener initialized. HIP-423 scheduler ready.",
   },
 ];
 
@@ -102,7 +102,7 @@ export default function HermesConsolePage() {
         });
         const json = await res.json();
         addLog("MCP", `Superfluid CFA stream accelerated: +$${(json.amountDeposited / 2592000).toFixed(6)}/sec`, json);
-        addLog("HCS", `Consensus receipt anchored on Hedera Testnet! Topic: 0.0.4491823, Sequence: #${json.hcsAudit?.sequenceNumber}`);
+        addLog("HCS", `Consensus receipt anchored on Hedera Testnet! Topic: ${json.hcsAudit?.topicId || "SIMULATED"}, Sequence: #${json.hcsAudit?.sequenceNumber ?? "N/A"}`);
         addLog("HERMES", "Autonomous rental yield distribution complete. All token shareholder streams are actively ticking.");
       } else if (cmd.toLowerCase().includes("usps") || cmd.toLowerCase().includes("x402") || cmd.toLowerCase().includes("tokenize")) {
         addLog("HERMES", "Checking physical deliverability for 456 Oak Avenue via Hedera x402 Property Oracle paywall...");
@@ -119,13 +119,13 @@ export default function HermesConsolePage() {
         });
         const json = await res.json();
         addLog("MCP", `USPS DPV deliverability confirmed: Code ${json.dpvConfirmation} (Deliverable Address)`, json);
-        addLog("HCS", `HCS Audit message recorded on Topic 0.0.4491823 (Sequence #${json.hcsAudit?.sequenceNumber})`);
+        addLog("HCS", `HCS Audit message recorded on Topic ${json.hcsAudit?.topicId || "SIMULATED"} (Sequence #${json.hcsAudit?.sequenceNumber ?? "N/A"})`);
         addLog("HERMES", "Property is physical asset verified. HTS fractional token creation authorized.");
       } else if (cmd.toLowerCase().includes("hip-423") || cmd.toLowerCase().includes("schedule")) {
         addLog("HERMES", "Queueing Hedera scheduled recurring yield payout transaction (HIP-423)...");
         await new Promise((r) => setTimeout(r, 600));
         addLog("MCP", "Scheduled transaction created: 0.0.4491823@1788783526. Schedule ID: 0.0.592819.");
-        addLog("HCS", "HIP-423 schedule confirmation logged to Topic 0.0.4491823.");
+        addLog("HCS", "HIP-423 schedule confirmation logged to Hedera Consensus Service.");
         addLog("HERMES", "Recurring schedule active. Payouts will trigger on the 1st of every month automatically.");
       } else {
         addLog("HERMES", `Received instruction: "${cmd}". Routing through Hermes operator autonomous planner...`);
@@ -270,7 +270,7 @@ export default function HermesConsolePage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-neutral-500">Consensus Topic:</span>
-                <span className="text-black font-mono">0.0.4491823</span>
+                <span className="text-black font-mono">HCS Dynamic</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-neutral-500">Oracle Validation:</span>
@@ -460,7 +460,6 @@ export default function HermesConsolePage() {
         <div className="border border-neutral-300 bg-white p-6 shadow-sm">
           <h3 className="text-base font-bold text-black mb-3">Live Hedera Consensus Audit Receipt</h3>
           <HcsAuditBadge
-            topicId="0.0.4491823"
             sequenceNumber={83526}
             txId="SIMULATED_PAYMENT"
           />

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { verifyTypedData, verifyMessage } from "ethers";
+import { verifyTypedData, verifyMessage, getAddress, isAddress, AbiCoder, recoverAddress } from "ethers";
 
 export interface SessionSpendingLimits {
   maxSpendHbar: number;
@@ -7,10 +7,17 @@ export interface SessionSpendingLimits {
 }
 
 export interface SessionPolicyConstraints {
-  maxSpendHbar: number;
-  maxFlowRateMonthlyUsd: number;
-  allowedActions: string[];
-  durationHours: number;
+  maxSpend: number;
+  maxFlow: number;
+  allowedTargets: string[];
+  allowedSelectors: string[];
+  validAfter: number;
+  validUntil: number;
+  durationHours?: number;
+  allowedActions?: string[];
+  // Backwards compatibility mappings:
+  maxSpendHbar?: number;
+  maxFlowRateMonthlyUsd?: number;
 }
 
 export interface AgentSessionRecord {
@@ -25,6 +32,8 @@ export interface AgentSessionRecord {
   validUntil: number;
   createdAt: number;
   expiresAt: number;
+  allowedTargets: string[];
+  allowedSelectors: string[];
   allowedActions: string[];
   constraints: SessionPolicyConstraints;
   spendingLimits: SessionSpendingLimits;
@@ -49,6 +58,24 @@ export interface PolicyValidationResult {
 export const VALIDATOR_CONTRACT_ADDRESS = "0x7579C0de00000000000000000000000000007579";
 export const HERMES_AGENT_ADDRESS = "0x89205A3A3b2A69De6Dbf7f01ED13B2108B2c43e7";
 
+export const DEFAULT_ALLOWED_TARGETS = [
+  VALIDATOR_CONTRACT_ADDRESS,
+  "0x1111111111111111111111111111111111111111", // PropertyRegistry
+  "0x2222222222222222222222222222222222222222", // YieldVault
+  "0x3333333333333333333333333333333333333333", // USPSChainlinkConsumer
+];
+
+export const DEFAULT_ALLOWED_SELECTORS = [
+  "0xb4b46617", // registerProperty(bytes32,string,uint256,bool)
+  "0x401826f6", // setVerificationStatus(bytes32,bytes32,bool)
+  "0x19273c68", // updatePropertyStatus(bytes32,uint8)
+  "0xd4116492", // depositRent(bytes32,uint256)
+  "0x7a83d73a", // createInvestorStream(bytes32,address,uint256)
+  "0x90f5c9ef", // calculateFlowRate(uint256,uint256)
+  "0x38ba6156", // x402 settlement / custom actions
+  "0x12345678", // demo action
+];
+
 export const SESSION_KEY_EIP712_DOMAIN = {
   name: "Prism8SessionValidator",
   version: "1",
@@ -56,7 +83,23 @@ export const SESSION_KEY_EIP712_DOMAIN = {
   verifyingContract: VALIDATOR_CONTRACT_ADDRESS,
 };
 
+// Full 9-field EIP-712 SessionPolicy schema enforced on-chain
 export const SESSION_KEY_EIP712_TYPES = {
+  SessionPolicy: [
+    { name: "grantor", type: "address" },
+    { name: "agent", type: "address" },
+    { name: "allowedTargets", type: "address[]" },
+    { name: "allowedSelectors", type: "bytes4[]" },
+    { name: "maxSpend", type: "uint256" },
+    { name: "maxFlow", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
+    { name: "validUntil", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+  ],
+};
+
+// Legacy schema for backwards-compatible signature parsing fallback
+const LEGACY_SESSION_KEY_EIP712_TYPES = {
   SessionPolicy: [
     { name: "grantor", type: "address" },
     { name: "agent", type: "address" },
@@ -156,16 +199,26 @@ export interface SessionVerificationDetail {
 export const DEMO_MOCK_SIGNATURE =
   "0x38ba6156ac3f289611f7c11f421e9c8f01b50e0d17dc79c8a9f4c3217b58a129d21e843f5451e944738590172bf4212a1c";
 
+export interface SessionPolicyValues {
+  grantor?: string;
+  agent?: string;
+  allowedTargets?: string[];
+  allowedSelectors?: string[];
+  maxSpend?: number | bigint;
+  maxFlow?: number | bigint;
+  validAfter?: number;
+  validUntil?: number;
+  nonce?: number;
+  maxSpendHbar?: number;
+  maxFlowMonthlyUsd?: number;
+  chainId?: number;
+  verifyingContract?: string;
+}
+
 export function verifySessionSignature(
   grantor: string,
   signature: string,
-  policyValues?: {
-    agent?: string;
-    maxSpendHbar?: number;
-    maxFlowMonthlyUsd?: number;
-    validUntil?: number;
-    nonce?: number;
-  },
+  policyValues?: SessionPolicyValues,
   rawMessage?: string
 ): SessionVerificationDetail {
   if (!grantor || !signature || typeof signature !== "string" || typeof grantor !== "string") {
@@ -182,33 +235,91 @@ export function verifySessionSignature(
   // 1. Try EIP-712 Typed Data Verification
   if (policyValues) {
     try {
+      const validAfter = policyValues.validAfter ?? Math.floor(Date.now() / 1000);
+      const validAfterSec = validAfter > 1e11 ? Math.floor(validAfter / 1000) : validAfter;
+
       const validUntil = policyValues.validUntil ?? Math.floor((Date.now() + 86400000) / 1000);
       const validUntilSec = validUntil > 1e11 ? Math.floor(validUntil / 1000) : validUntil;
-      const rawMaxSpend = policyValues.maxSpendHbar ?? 5.0;
-      const maxSpendHbar = rawMaxSpend >= 1e12 ? BigInt(rawMaxSpend) : BigInt(Math.floor(rawMaxSpend * 1e18));
 
+      const rawMaxSpend = policyValues.maxSpend ?? policyValues.maxSpendHbar ?? 5.0;
+      const maxSpend = typeof rawMaxSpend === "bigint" ? rawMaxSpend : (rawMaxSpend >= 1e12 ? BigInt(rawMaxSpend) : BigInt(Math.floor(rawMaxSpend * 1e18)));
+
+      const rawMaxFlow = policyValues.maxFlow ?? policyValues.maxFlowMonthlyUsd ?? 5000;
+      const maxFlow = typeof rawMaxFlow === "bigint" ? rawMaxFlow : BigInt(Math.floor(Number(rawMaxFlow)));
+
+      const allowedTargets = (policyValues.allowedTargets && policyValues.allowedTargets.length > 0)
+        ? policyValues.allowedTargets.map((t) => getAddress(t))
+        : DEFAULT_ALLOWED_TARGETS.map((t) => getAddress(t));
+
+      const allowedSelectors = (policyValues.allowedSelectors && policyValues.allowedSelectors.length > 0)
+        ? policyValues.allowedSelectors.map((s) => s.toLowerCase())
+        : DEFAULT_ALLOWED_SELECTORS.map((s) => s.toLowerCase());
+
+      const domain = {
+        ...SESSION_KEY_EIP712_DOMAIN,
+        ...(policyValues.chainId !== undefined ? { chainId: policyValues.chainId } : {}),
+        ...(policyValues.verifyingContract !== undefined ? { verifyingContract: policyValues.verifyingContract } : {}),
+      };
+
+      // 1A. Primary: 9-field schema
       const typedValue = {
         grantor,
         agent: policyValues.agent || HERMES_AGENT_ADDRESS,
-        maxSpendHbar,
-        maxFlowMonthlyUsd: BigInt(policyValues.maxFlowMonthlyUsd ?? 5000),
+        allowedTargets,
+        allowedSelectors,
+        maxSpend,
+        maxFlow,
+        validAfter: BigInt(validAfterSec),
         validUntil: BigInt(validUntilSec),
         nonce: BigInt(policyValues.nonce ?? 1),
       };
 
-      const recovered = verifyTypedData(
-        SESSION_KEY_EIP712_DOMAIN,
-        SESSION_KEY_EIP712_TYPES,
-        typedValue,
-        signature
-      );
+      try {
+        const recovered = verifyTypedData(
+          domain,
+          SESSION_KEY_EIP712_TYPES,
+          typedValue,
+          signature
+        );
 
-      if (recovered.toLowerCase() === expected) {
-        return {
-          verified: true,
-          signer: recovered,
-          signatureType: "EIP712",
-        };
+        if (recovered.toLowerCase() === expected) {
+          return {
+            verified: true,
+            signer: recovered,
+            signatureType: "EIP712",
+          };
+        }
+      } catch {
+        // Fall through to try legacy format
+      }
+
+      // 1B. Fallback: Legacy 6-field schema
+      const legacyTypedValue = {
+        grantor,
+        agent: policyValues.agent || HERMES_AGENT_ADDRESS,
+        maxSpendHbar: maxSpend,
+        maxFlowMonthlyUsd: maxFlow,
+        validUntil: BigInt(validUntilSec),
+        nonce: BigInt(policyValues.nonce ?? 1),
+      };
+
+      try {
+        const legacyRecovered = verifyTypedData(
+          domain,
+          LEGACY_SESSION_KEY_EIP712_TYPES,
+          legacyTypedValue,
+          signature
+        );
+
+        if (legacyRecovered.toLowerCase() === expected) {
+          return {
+            verified: true,
+            signer: legacyRecovered,
+            signatureType: "EIP712",
+          };
+        }
+      } catch {
+        // Fall through
       }
     } catch {
       // Fall through to test personal_sign or demo flag
@@ -232,7 +343,6 @@ export function verifySessionSignature(
   }
 
   // 3. Fallback for demo signature: strictly isolated behind an explicit development/demo flag.
-  // Must NEVER activate in production, and NEVER accepts arbitrary strings with length > 50!
   const isProduction = process.env.NODE_ENV === "production";
   const allowDemoSignatures = process.env.ALLOW_DEMO_SIGNATURES === "true";
 
@@ -274,7 +384,12 @@ export function createSessionGrant(
   rawMessage?: string,
   options?: {
     validAfter?: number;
+    validUntil?: number;
     agent?: string;
+    allowedTargets?: string[];
+    allowedSelectors?: string[];
+    chainId?: number;
+    verifyingContract?: string;
   }
 ): AgentSessionRecord {
   if (!grantor || !signature) {
@@ -290,9 +405,37 @@ export function createSessionGrant(
     throw new NonceReplayError(`Nonce ${nonce} has already been registered for grantor ${grantor}.`);
   }
 
+  const rawTargets = options?.allowedTargets ?? customConstraints?.allowedTargets ?? DEFAULT_ALLOWED_TARGETS;
+  const allowedTargets = rawTargets.map((t) => {
+    if (!isAddress(t)) throw new Error(`Invalid target address: ${t}`);
+    return getAddress(t);
+  });
+
+  const rawSelectors = options?.allowedSelectors ?? customConstraints?.allowedSelectors ?? DEFAULT_ALLOWED_SELECTORS;
+  const allowedSelectors = rawSelectors.map((s) => {
+    if (!/^0x[0-9a-fA-F]{8}$/.test(s)) throw new Error(`Invalid function selector: ${s}`);
+    return s.toLowerCase();
+  });
+
+  const maxSpend = customConstraints?.maxSpend ?? customConstraints?.maxSpendHbar ?? 5.0;
+  const maxFlow = customConstraints?.maxFlow ?? customConstraints?.maxFlowRateMonthlyUsd ?? 5000;
+  const now = Date.now();
+  const validAfter = options?.validAfter ?? customConstraints?.validAfter ?? now;
+  const durationHours = customConstraints?.durationHours ?? 24;
+  const validUntil = options?.validUntil ?? customConstraints?.validUntil ?? (validAfter + durationHours * 3600000);
+
+  if (validAfter >= validUntil) {
+    throw new Error("Invalid policy validity: validAfter must be strictly earlier than validUntil.");
+  }
+
   const constraints: SessionPolicyConstraints = {
-    maxSpendHbar: customConstraints?.maxSpendHbar ?? 5.0,
-    maxFlowRateMonthlyUsd: customConstraints?.maxFlowRateMonthlyUsd ?? 5000,
+    maxSpend,
+    maxFlow,
+    allowedTargets,
+    allowedSelectors,
+    validAfter,
+    validUntil,
+    durationHours,
     allowedActions: customConstraints?.allowedActions ?? [
       "ORACLE_USPS_X402",
       "HCS_CONSENSUS_AUDIT",
@@ -301,24 +444,28 @@ export function createSessionGrant(
       "CFA_YIELD_STREAM_ADJUST",
       "COMPLIANCE_FREEZE",
     ],
-    durationHours: customConstraints?.durationHours ?? 24,
+    maxSpendHbar: maxSpend,
+    maxFlowRateMonthlyUsd: maxFlow,
   };
 
   const targetAgent = options?.agent || HERMES_AGENT_ADDRESS;
-  const now = Date.now();
-  const validAfter = options?.validAfter ?? now;
-  const validUntil = validAfter + constraints.durationHours * 3600000;
-  const validUntilSec = Math.floor(validUntil / 1000);
+  const validAfterSec = validAfter > 1e11 ? Math.floor(validAfter / 1000) : validAfter;
+  const validUntilSec = validUntil > 1e11 ? Math.floor(validUntil / 1000) : validUntil;
 
   const verification = verifySessionSignature(
     grantor,
     signature,
     {
       agent: targetAgent,
-      maxSpendHbar: constraints.maxSpendHbar,
-      maxFlowMonthlyUsd: constraints.maxFlowRateMonthlyUsd,
+      allowedTargets,
+      allowedSelectors,
+      maxSpend,
+      maxFlow,
+      validAfter: validAfterSec,
       validUntil: validUntilSec,
       nonce,
+      chainId: options?.chainId,
+      verifyingContract: options?.verifyingContract,
     },
     rawMessage
   );
@@ -342,11 +489,13 @@ export function createSessionGrant(
     validUntil,
     createdAt: now,
     expiresAt: validUntil,
-    allowedActions: [...constraints.allowedActions],
+    allowedTargets,
+    allowedSelectors,
+    allowedActions: [...(constraints.allowedActions || [])],
     constraints,
     spendingLimits: {
-      maxSpendHbar: constraints.maxSpendHbar,
-      maxFlowRateMonthlyUsd: constraints.maxFlowRateMonthlyUsd,
+      maxSpendHbar: maxSpend,
+      maxFlowRateMonthlyUsd: maxFlow,
     },
     spentHbar: 0,
     activeStreamsCount: 0,
@@ -365,7 +514,13 @@ export function createSessionGrant(
 
 export function validateSessionPolicy(
   sessionId: string,
-  action: string,
+  actionOrParams: string | {
+    action?: string;
+    target?: string;
+    selector?: string;
+    spend?: number;
+    flow?: number;
+  },
   spendHbar: number = 0,
   flowRateMonthly: number = 0
 ): PolicyValidationResult {
@@ -388,8 +543,16 @@ export function validateSessionPolicy(
     };
   }
 
+  const action = typeof actionOrParams === "string" ? actionOrParams : actionOrParams.action;
+  const target = typeof actionOrParams === "object" ? actionOrParams.target : undefined;
+  const selector = typeof actionOrParams === "object" ? actionOrParams.selector : undefined;
+  const spend = typeof actionOrParams === "object" && actionOrParams.spend !== undefined ? actionOrParams.spend : spendHbar;
+  const flow = typeof actionOrParams === "object" && actionOrParams.flow !== undefined ? actionOrParams.flow : flowRateMonthly;
+
+  const now = Date.now();
+
   // 1. Check Not-Yet-Valid (validAfter)
-  if (session.validAfter && Date.now() < session.validAfter) {
+  if (session.validAfter && now < session.validAfter) {
     return {
       allowed: false,
       status: 401,
@@ -402,8 +565,8 @@ export function validateSessionPolicy(
   // 2. Check Expiration & Status (validUntil)
   if (
     session.status !== "ACTIVE" ||
-    Date.now() > session.validUntil ||
-    (session.expiresAt && Date.now() > session.expiresAt)
+    now > session.validUntil ||
+    (session.expiresAt && now > session.expiresAt)
   ) {
     return {
       allowed: false,
@@ -428,38 +591,73 @@ export function validateSessionPolicy(
     };
   }
 
-  // 4. Check Action Whitelist
-  if (!session.constraints.allowedActions.includes(action) && !session.allowedActions.includes(action)) {
-    return {
-      allowed: false,
-      status: 403,
-      reason: `Cryptographic Policy Violation: Action '${action}' is not in the delegated whitelist.`,
-      remainingHbar: Math.max(0, session.constraints.maxSpendHbar - session.spentHbar),
-      session,
-    };
+  // 4. Check Target Address Allowlist
+  if (target) {
+    const isTargetAllowed = session.constraints.allowedTargets.some(
+      (t) => t.toLowerCase() === target.toLowerCase()
+    );
+    if (!isTargetAllowed) {
+      return {
+        allowed: false,
+        status: 403,
+        reason: `Cryptographic Policy Violation: Target '${target}' is not in the delegated whitelist.`,
+        remainingHbar: Math.max(0, session.constraints.maxSpend - session.spentHbar),
+        session,
+      };
+    }
   }
 
-  // 5. Check Spend Budget Constraint
-  const remaining = session.constraints.maxSpendHbar - session.spentHbar;
-  if (spendHbar > 0 && spendHbar > remaining) {
+  // 5. Check Function Selector Allowlist
+  if (selector) {
+    const isSelectorAllowed = session.constraints.allowedSelectors.some(
+      (s) => s.toLowerCase() === selector.toLowerCase()
+    );
+    if (!isSelectorAllowed) {
+      return {
+        allowed: false,
+        status: 403,
+        reason: `Cryptographic Policy Violation: Selector '${selector}' is not in the delegated whitelist.`,
+        remainingHbar: Math.max(0, session.constraints.maxSpend - session.spentHbar),
+        session,
+      };
+    }
+  }
+
+  // 6. Check Action Whitelist (if no target/selector provided)
+  if (action && !target && !selector) {
+    const allowed = (session.constraints.allowedActions || []).includes(action) ||
+      (session.allowedActions || []).includes(action);
+    if (!allowed) {
+      return {
+        allowed: false,
+        status: 403,
+        reason: `Cryptographic Policy Violation: Action '${action}' is not in the delegated whitelist.`,
+        remainingHbar: Math.max(0, session.constraints.maxSpend - session.spentHbar),
+        session,
+      };
+    }
+  }
+
+  // 7. Check Spend Budget Constraint
+  const maxSpend = session.constraints.maxSpend ?? session.constraints.maxSpendHbar ?? 5.0;
+  const remaining = maxSpend - session.spentHbar;
+  if (spend > 0 && spend > remaining) {
     return {
       allowed: false,
       status: 403,
-      reason: `Budget Cap Exceeded: Requested ${spendHbar} HBAR exceeds remaining session allowance (${remaining.toFixed(2)} HBAR).`,
+      reason: `Budget Cap Exceeded: Requested ${spend} HBAR exceeds remaining session allowance (${remaining.toFixed(2)} HBAR).`,
       remainingHbar: remaining,
       session,
     };
   }
 
-  // 6. Check Flow Rate Ceiling Constraint
-  if (
-    flowRateMonthly > 0 &&
-    flowRateMonthly > session.constraints.maxFlowRateMonthlyUsd
-  ) {
+  // 8. Check Flow Rate Ceiling Constraint
+  const maxFlow = session.constraints.maxFlow ?? session.constraints.maxFlowRateMonthlyUsd ?? 5000;
+  if (flow > 0 && flow > maxFlow) {
     return {
       allowed: false,
       status: 403,
-      reason: `Yield Ceiling Violation: Requested monthly stream of $${flowRateMonthly} exceeds permitted maximum of $${session.constraints.maxFlowRateMonthlyUsd}.`,
+      reason: `Yield Ceiling Violation: Requested monthly stream of $${flow} exceeds permitted maximum of $${maxFlow}.`,
       remainingHbar: remaining,
       session,
     };
@@ -467,7 +665,7 @@ export function validateSessionPolicy(
 
   return {
     allowed: true,
-    remainingHbar: remaining - spendHbar,
+    remainingHbar: remaining - spend,
     session,
   };
 }
@@ -486,4 +684,122 @@ export function commitSessionSpend(
     session.activeStreamsCount += 1;
   }
   return session;
+}
+
+/**
+ * Standard ERC-4337 / ERC-7579 UserOperation off-chain validation with complete parity to SessionKeyValidator.sol.
+ */
+export function validateUserOp(
+  userOp: {
+    sender: string;
+    nonce: number | bigint;
+    initCode?: string;
+    callData: string;
+    signature: string;
+  },
+  userOpHash: string
+): { valid: boolean; validationData: number; error?: string } {
+  try {
+    const abiCoder = AbiCoder.defaultAbiCoder();
+    const [policyTuple, grantorSig, agentSig] = abiCoder.decode(
+      [
+        "tuple(address grantor, address agent, address[] allowedTargets, bytes4[] allowedSelectors, uint256 maxSpend, uint256 maxFlow, uint256 validAfter, uint256 validUntil, uint256 nonce)",
+        "bytes",
+        "bytes"
+      ],
+      userOp.signature
+    );
+
+    const policy = {
+      grantor: policyTuple[0],
+      agent: policyTuple[1],
+      allowedTargets: policyTuple[2],
+      allowedSelectors: policyTuple[3],
+      maxSpend: policyTuple[4],
+      maxFlow: policyTuple[5],
+      validAfter: Number(policyTuple[6]),
+      validUntil: Number(policyTuple[7]),
+      nonce: Number(policyTuple[8]),
+    };
+
+    if (userOp.sender.toLowerCase() !== policy.grantor.toLowerCase()) {
+      return { valid: false, validationData: 1, error: "userOp.sender does not match policy grantor." };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (nowSec < policy.validAfter) {
+      return { valid: false, validationData: 1, error: "Session policy not yet valid." };
+    }
+    if (nowSec > policy.validUntil) {
+      return { valid: false, validationData: 1, error: "Session policy expired." };
+    }
+
+    if (isGrantorNonceUsed(policy.grantor, policy.nonce)) {
+      return { valid: false, validationData: 1, error: "Session policy nonce already used." };
+    }
+
+    // Verify grantor signature over policy
+    const verification = verifySessionSignature(policy.grantor, grantorSig, policy);
+    if (!verification.verified) {
+      return { valid: false, validationData: 1, error: "Grantor signature over policy invalid." };
+    }
+
+    // Verify agent signature over userOpHash
+    const recoveredAgent = recoverAddress(userOpHash, agentSig);
+    if (recoveredAgent.toLowerCase() !== policy.agent.toLowerCase()) {
+      return { valid: false, validationData: 1, error: "Agent signature over userOpHash invalid." };
+    }
+
+    // Inspect execution callData
+    if (userOp.callData && userOp.callData.length >= 10) {
+      const execSelector = userOp.callData.slice(0, 10).toLowerCase();
+      let callTarget: string | undefined;
+      let callValue = 0n;
+      let callSelector: string | undefined;
+
+      // execute(address,uint256,bytes) -> 0xb61d27f6
+      if (execSelector === "0xb61d27f6") {
+        const decoded = abiCoder.decode(["address", "uint256", "bytes"], "0x" + userOp.callData.slice(10));
+        callTarget = decoded[0];
+        callValue = decoded[1];
+        if (decoded[2].length >= 10) {
+          callSelector = decoded[2].slice(0, 10).toLowerCase();
+        }
+      }
+      // execute(bytes32,bytes) -> 0xe9ae5c53
+      else if (execSelector === "0xe9ae5c53") {
+        const decoded = abiCoder.decode(["bytes32", "bytes"], "0x" + userOp.callData.slice(10));
+        const execCalldata = decoded[1];
+        if (execCalldata.length >= 106) {
+          callTarget = getAddress("0x" + execCalldata.slice(2, 42));
+          callValue = BigInt("0x" + execCalldata.slice(42, 106));
+          if (execCalldata.length >= 114) {
+            callSelector = "0x" + execCalldata.slice(106, 114).toLowerCase();
+          }
+        }
+      }
+
+      if (callTarget) {
+        const isAllowed = policy.allowedTargets.some((t: string) => t.toLowerCase() === callTarget!.toLowerCase());
+        if (!isAllowed) {
+          return { valid: false, validationData: 1, error: `Target ${callTarget} not in allowedTargets.` };
+        }
+      }
+
+      if (callSelector) {
+        const isAllowed = policy.allowedSelectors.some((s: string) => s.toLowerCase() === callSelector!.toLowerCase());
+        if (!isAllowed) {
+          return { valid: false, validationData: 1, error: `Selector ${callSelector} not in allowedSelectors.` };
+        }
+      }
+
+      if (callValue > policy.maxSpend) {
+        return { valid: false, validationData: 1, error: `Spend ${callValue} exceeds policy maxSpend ${policy.maxSpend}.` };
+      }
+    }
+
+    return { valid: true, validationData: 0 };
+  } catch (err: any) {
+    return { valid: false, validationData: 1, error: err.message };
+  }
 }

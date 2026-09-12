@@ -115,8 +115,11 @@ export async function POST(req: NextRequest) {
       session.signature,
       {
         agent: session.agentAddress || session.agent,
-        maxSpendHbar: session.constraints.maxSpendHbar,
-        maxFlowMonthlyUsd: session.constraints.maxFlowRateMonthlyUsd,
+        allowedTargets: session.allowedTargets || session.constraints.allowedTargets,
+        allowedSelectors: session.allowedSelectors || session.constraints.allowedSelectors,
+        maxSpend: session.constraints.maxSpend ?? session.constraints.maxSpendHbar,
+        maxFlow: session.constraints.maxFlow ?? session.constraints.maxFlowRateMonthlyUsd,
+        validAfter: Math.floor(session.validAfter / 1000),
         validUntil: Math.floor(session.validUntil / 1000),
         nonce: session.nonce,
       },
@@ -172,10 +175,18 @@ export async function POST(req: NextRequest) {
       recordExecutionNonce(session.sessionId, nonce);
     }
 
-    // 8. REJECT: Unauthorized Action / Spend Guardrails (403)
+    // 8. REJECT: Unauthorized Action / Target / Spend Guardrails (403)
     if (simulateMalicious) {
       const maliciousAction = "UNAUTHORIZED_TREASURY_TRANSFER";
-      const validation = validateSessionPolicy(sessionId, maliciousAction, 100.0, 50000);
+      const maliciousTarget = "0x9999999999999999999999999999999999999999";
+      const maliciousSelector = "0xa9059cbb";
+      const validation = validateSessionPolicy(sessionId, {
+        action: maliciousAction,
+        target: maliciousTarget,
+        selector: maliciousSelector,
+        spend: 100.0,
+        flow: 50000,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -183,6 +194,8 @@ export async function POST(req: NextRequest) {
           error: validation.reason,
           guardrailDetails: {
             attemptedAction: maliciousAction,
+            attemptedTarget: maliciousTarget,
+            attemptedSelector: maliciousSelector,
             attemptedSpend: "100.0 HBAR",
             remainingSessionBudget: `${validation.remainingHbar.toFixed(2)} HBAR`,
             status: "CRYPTOGRAPHIC_POLICY_VIOLATION_HALTED",
@@ -276,7 +289,9 @@ export async function POST(req: NextRequest) {
     steps.push({
       stepNumber: 2,
       name: "Hedera Consensus Service (HCS) Audit Anchor",
-      network: `Hedera Testnet (HCS Topic ${hcsAudit?.topicId ?? "0.0.4491823"})`,
+      network: hcsAudit?.topicId
+        ? `Hedera Testnet (HCS Topic ${hcsAudit.topicId})`
+        : "Hedera Testnet (HCS Simulated)",
       status: hcsAudit?.provenance === "LIVE_ONCHAIN" ? "EXECUTED" : "SIMULATED",
       provenance: hcsAudit?.provenance ?? "SIMULATED",
       txId: hcsAudit?.txId ?? null,
@@ -284,7 +299,9 @@ export async function POST(req: NextRequest) {
       explorerUrl: hcsAudit?.hashscanUrl ?? null,
       detail: hcsAudit?.sequenceNumber
         ? `Consensus sequence #${hcsAudit.sequenceNumber} anchored on HCS Topic ${hcsAudit.topicId}.`
-        : `Consensus sequence anchored on HCS Topic ${hcsAudit?.topicId ?? "0.0.4491823"}.`,
+        : hcsAudit?.topicId
+        ? `Consensus sequence anchored on HCS Topic ${hcsAudit.topicId}.`
+        : "Consensus sequence recorded in simulated HCS audit mode.",
       timestamp: hcsAudit?.consensusTimestamp ?? new Date().toISOString(),
     });
 

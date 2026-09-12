@@ -3,7 +3,7 @@
 
 - **Target Audience:** ETHGlobal Judges (Account Abstraction, Hedera, The Graph, Superfluid tracks)
 - **Presenter Role:** Platform Operator / Admin pair programming with Hermes Agent
-- **Key Takeaway:** Real-world physical real estate verified via x402 oracle on Hedera, indexed autonomously by The Graph, with scoped AI agent autonomy via ERC-7579 session keys and per-second continuous rental yield streaming via Superfluid CFA on Base Sepolia.
+- **Key Takeaway:** Real-world property addresses verified via x402 oracle on Hedera, indexed autonomously by The Graph, with scoped AI agent autonomy via ERC-7579 session keys and per-second continuous rental yield streaming via Superfluid CFA on Base Sepolia.
 
 ---
 
@@ -29,10 +29,10 @@
   1. **Step 1:** Hermes calls `/api/x402/property-oracle`.
   2. **Step 2:** Server returns `HTTP 402 Payment Required` with the **Blocky402** challenge requesting 0.5 HBAR.
   3. **Step 3:** Hermes autonomously settles the 0.5 HBAR micropayment on Hedera Testnet under its delegated session key allowance.
-  4. **Step 4:** The payment receipt is verified and immediately submitted to an **HCS (Hedera Consensus Service) Topic (0.0.4491823)**.
+  4. **Step 4:** The payment receipt is verified and recorded to a dedicated **HCS (Hedera Consensus Service) Audit Topic**.
   5. **Step 5:** The oracle validates the USPS address (Code Y Deliverable) and anchors the property hash in `PropertyRegistry.sol`.
 * **Talking Points:**
-  > "Hermes executed this entire workflow autonomously under its delegated session key. It paid the 0.5 HBAR oracle fee on Hedera Testnet without human approval, and the consensus receipt is permanently verifiable on HashScan."
+  > "Hermes executed this workflow autonomously within its cryptographically delegated session key constraints. It paid the 0.5 HBAR oracle fee on Hedera Testnet within delegated limits, and the consensus receipt is permanently verifiable on HashScan."
 
 ---
 
@@ -51,7 +51,7 @@
 * **Screen:** The **Investor Stream Dashboard**.
 * **Visual Flow:**
   1. Point to the live ticking yield counter: **`+$0.00014660 / sec`** (Base Sepolia).
-  2. Watch the investor balance ticking continuously upward every 80ms.
+  2. Watch the investor balance ticking continuously upward (client-side counter refresh reflecting the continuous flow rate).
   3. Click **"Trigger Tenant Rent Deposit"** in the **Rent Simulator Panel** ($3,800 inflow).
   4. Observe the stream update in real-time, with simulated rent converting to `fUSDCx` Super Tokens in `YieldVault.sol`.
 * **Talking Points:**
@@ -66,7 +66,7 @@
   2. The backend `SessionPolicy` guardrail and `SessionKeyValidator.sol` module instantly halt the action.
   3. UI displays **`🛑 CRYPTOGRAPHIC GUARDRAIL INTERCEPT: ACTION HALTED`** (`HTTP 403 Forbidden`).
 * **Closing:**
-  > "Prism 8 proves that autonomous AI agents can manage real on-chain capital when bounded by cryptographic code. We unite ERC-7579 modular account abstraction, Hedera x402 machine payments, The Graph data intelligence, and Superfluid continuous streaming into a single production-ready protocol. Thank you!"
+  > "Prism 8 demonstrates that autonomous AI agents can manage real on-chain capital when bounded by cryptographic code. We unite ERC-7579 modular account abstraction, Hedera x402 machine payments, The Graph data intelligence, and Superfluid continuous streaming into a unified protocol architecture. Thank you!"
 
 ---
 

@@ -364,21 +364,27 @@ export default function TokenWorkspace({
               Hedera HCS Audit Trail
             </div>
             <div className="text-2xl font-bold text-black">
-              Topic 0.0.4491823
+              {events.find((e) => e.hashscanUrl?.includes("/topic/"))?.hashscanUrl?.split("/topic/")[1]
+                ? `Topic ${events.find((e) => e.hashscanUrl?.includes("/topic/"))?.hashscanUrl?.split("/topic/")[1]}`
+                : "HCS Consensus"}
             </div>
             <p className="text-xs text-neutral-600 leading-relaxed">
               Every x402 oracle check and yield distribution writes an immutable consensus audit record directly to Hedera Consensus Service.
             </p>
             <div className="pt-2 border-t border-neutral-200">
-              <a
-                href="https://hashscan.io/testnet/topic/0.0.4491823"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-bold text-black underline hover:text-neutral-600 flex items-center gap-1"
-              >
-                <span>View HCS Topic on HashScan</span>
-                <span>↗</span>
-              </a>
+              {events.find((e) => e.hashscanUrl?.includes("/topic/"))?.hashscanUrl ? (
+                <a
+                  href={events.find((e) => e.hashscanUrl?.includes("/topic/"))!.hashscanUrl!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-black underline hover:text-neutral-600 flex items-center gap-1"
+                >
+                  <span>View HCS Topic on HashScan</span>
+                  <span>↗</span>
+                </a>
+              ) : (
+                <span className="text-xs text-neutral-500 font-mono">Simulated Audit Environment</span>
+              )}
             </div>
           </div>
 

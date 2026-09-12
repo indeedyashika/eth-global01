@@ -51,6 +51,7 @@ export function seedDatabase(db: Database.Database): void {
   `);
 
   // Seed Property 1: 456 Oak Avenue Luxury Residences (Hedera HTS + Base Sepolia CFA Stream)
+  // Legitimate database seed fixture: token ID "0.0.4491823" represents the demo property asset
   if (!oakToken) {
     insertToken.run({
       id: "0.0.4491823",

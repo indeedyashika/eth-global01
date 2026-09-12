@@ -233,14 +233,18 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-neutral-500">HCS Topic ID:</span>
-                        <a
-                          href="https://hashscan.io/testnet/topic/0.0.4491823"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-black underline hover:text-neutral-600 font-bold"
-                        >
-                          0.0.4491823 ↗
-                        </a>
+                        {oracleTestResult?.hcsAudit?.topicId ? (
+                          <a
+                            href={`https://hashscan.io/testnet/topic/${oracleTestResult.hcsAudit.topicId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-black underline hover:text-neutral-600 font-bold"
+                          >
+                            {oracleTestResult.hcsAudit.topicId} ↗
+                          </a>
+                        ) : (
+                          <span className="text-black font-semibold">SIMULATED</span>
+                        )}
                       </div>
                     </div>
 
@@ -293,7 +297,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
               </div>
               <div className="text-[11px] text-neutral-600 flex items-center justify-between pt-2 border-t border-neutral-200">
                 <span>Consensus Engine:</span>
-                <span className="text-black font-bold">Hedera HCS Topic 0.0.4491823</span>
+                <span className="text-black font-bold">Hedera Consensus Service (HCS)</span>
               </div>
             </div>
           </div>

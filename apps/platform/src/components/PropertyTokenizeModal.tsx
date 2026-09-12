@@ -77,7 +77,7 @@ export function PropertyTokenizeModal({
         const messageToSign = [
           "[Prism 8] Hedera x402 Micropayment Settlement",
           `Invoice ID: ${invoiceId}`,
-          "Payee: 0.0.4491823",
+          `Payee: ${challenge.x402?.payee || "Hedera Treasury"}`,
           "Amount: 0.5 HBAR equivalent",
           `Property: ${street}, ${city}, ${state} ${zip}`,
           `Payer: ${signerAddress}`,

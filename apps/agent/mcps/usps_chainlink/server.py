@@ -35,7 +35,7 @@ except Exception:
 
 BASE_URL = os.environ.get("TOKENIZATION_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 AGENT_SECRET = os.environ.get("TOKENIZATION_AGENT_SECRET", "")
-HEDERA_OPERATOR_ID = os.environ.get("HEDERA_OPERATOR_ID", "0.0.4491823")
+HEDERA_OPERATOR_ID = os.environ.get("HEDERA_OPERATOR_ID", "")
 HEDERA_ACCOUNT_ID_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 mcp = FastMCP("usps_chainlink")

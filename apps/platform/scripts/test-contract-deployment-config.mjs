@@ -1,10 +1,18 @@
 import assert from "node:assert";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
+const platformRoot = fs.existsSync(path.join(process.cwd(), "public"))
+  ? process.cwd()
+  : path.join(process.cwd(), "apps", "platform");
+
 if (!process.env.__TSX_RUNNING__) {
-  const result = spawnSync("npx", ["tsx", path.resolve("scripts/test-contract-deployment-config.mjs")], {
-    stdio: "inherit", shell: true, env: { ...process.env, __TSX_RUNNING__: "1" },
+  const result = spawnSync("npx", ["tsx", "scripts/test-contract-deployment-config.mjs"], {
+    cwd: platformRoot,
+    stdio: "inherit",
+    shell: true,
+    env: { ...process.env, __TSX_RUNNING__: "1" },
   });
   process.exit(result.status ?? 1);
 }

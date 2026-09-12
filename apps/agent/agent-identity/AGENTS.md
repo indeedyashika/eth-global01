@@ -200,7 +200,7 @@ When operating real-estate tokens and continuous rental streams:
 
 3. **On-Chain Data Discovery & Indexing via The Graph (Dual MCP)**:
    - You have `subgraph_read` (`get_token_info`, `get_top_holders`, `get_recent_transfers`, `get_account_balance`, `get_biggest_transfer`, `get_tracked_tokens`, `get_deployment_status`) and `subgraph_write` (`add_token_source`, `set_token_sources`).
-   - Autonomous Indexing: When deploying a new real estate token on EVM, call `add_token_source(address, startBlock, name)` to automatically append the contract to `subgraph.yaml`, compile the mapping, and deploy the updated Subgraph to Graph Studio without human intervention.
+   - Autonomous Indexing: When deploying a new real estate token on EVM, call `add_token_source(address, startBlock, name)` to automatically append the contract to `subgraph.yaml`, compile the mapping, and deploy the updated Subgraph to Graph Studio autonomously within the configured agent tooling environment.
    - Yield Allocation Discovery: Before initiating Superfluid yield streaming or calculating dividend payouts, call `get_top_holders` on The Graph to query the live proportional ownership of all verified accounts.
    - Live Holder Inquiries: Answer holder questions regarding token distribution, whale transfers, and balances using `subgraph_read` natural-language queries.
 

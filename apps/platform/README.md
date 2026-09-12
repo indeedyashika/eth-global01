@@ -18,6 +18,27 @@ means:
 - The Hedera network itself rejects a non-compliant transfer even if this app's local database
   is stale or wrong (see the comment in `POST /api/tokens/[id]/transfer`).
 
+## Implementation Status
+
+| Capability | Status | Evidence/Notes |
+| :--- | :--- | :--- |
+| **Hermes autonomous execution** | **LIVE** | Async daemon server (`apps/agent/server.py`) manages recurring liveness sweeps and `/api/agent/execute` autonomous pipeline runs within cryptographically bounded session allowances. Emits explicit simulated provenance in simulation mode. |
+| **ERC-7579** | **LIVE** | `SessionKeyValidator.sol` implements 9-field session policy with EIP-712 nested array hashing (`allowedTargets`, `allowedSelectors`), time window checks, spend budget (`maxSpend`), flow ceiling (`maxFlow`), monotonic nonce replay protection, and ERC-4337 packed `validateUserOp` with signature verification. Parity verified in `sessionPolicy.ts` and test suite. |
+| **Hedera HTS** | **LIVE** | Native HTS integration via `@hiero-ledger/sdk` in `tokenService.ts` (`TokenCreateTransaction`, `TokenGrantKycTransaction`, `TokenFreezeTransaction`, `TokenWipeTransaction`, `TokenPauseTransaction`, `TokenDissociateTransaction`). Submits real testnet transactions when operator credentials are configured. |
+| **HCS** | **PARTIAL** | On-chain message submission via `TopicMessageSubmitTransaction` supported in `hcsAudit.ts` when `HEDERA_AUDIT_TOPIC_ID` and operator keys are configured. In demo/simulated mode, returns `provenance: "SIMULATED"` with `txId: null` and `hashscanUrl: null`. Fails closed with configuration error if topic is missing in LIVE mode; never falls back to operator account. |
+| **x402** | **LIVE** | Full HTTP 402 payment challenge protocol implemented in `/api/x402/property-oracle` and `/api/x402/settle` using `Blocky402` specification. Enforces invoice issuance, unpaid challenge protection, server-side recipient/amount validation, and rejects unconfirmed/forged transaction IDs on Hedera testnet. |
+| **USPS** | **PARTIAL** | Production XML parser and USPS Web Tools consumer implemented in `oracleService.ts` and `server.py`. Validates delivery point validation (DPV). Runs in `LIVE_USPS` mode with `USPS_USER_ID`, failing closed with HTTP 503 if credentials are missing; deterministic test fixtures for Miami (`DPV: Y`) and arbitrary ZIP/invalid address rejection (`DPV: N`). Never defaults to 'Y'. |
+| **Chainlink Functions** | **COMPILED_ONLY** | `USPSChainlinkConsumer.sol` and `usps-verify.js` exist, compile, and encode/decode calldata and event topics (`AddressValidationRequested`, `AddressValidationFulfilled`). Live on-chain oracle subscriptions are not deployed or actively funded on testnet. |
+| **Superfluid** | **SIMULATED** | Constant Flow Agreement (CFA) math (`(monthlyRent * shareBasisPoints) / 10000 / 2592000`) and stream management implemented in `YieldVault.sol` and `superfluid_mcp/server.py`. In local/demo environments, continuous stream execution returns `provenance: "SIMULATED"` with `txId: null` and `explorerUrl: null`. Client-side dashboard counter animates derived continuous accrual (80ms interval). |
+| **World ID** | **LIVE** | IDKit verification integration in `src/lib/worldid/verification.ts` with real World API v4 endpoint verification (`/api/v4/verify`), expected action/signal hash validation, and environment gating. Rejects non-production proofs with `selfie_environment_mismatch` and fails closed with HTTP 503 when `WORLD_RP_ID` is unconfigured. |
+| **YieldVault** | **COMPILED_ONLY** | `contracts/YieldVault.sol` compiled to `src/lib/evm/generated/YieldVault.json`. Calldata encoding, decoding, event topics, and continuous flow math verified in `test-contracts.mjs`. In `SIMULATED` mode, contracts are tracked as `COMPILED_ONLY` or `SIMULATED` unless configured on Sepolia. |
+| **PropertyRegistry** | **COMPILED_ONLY** | `contracts/PropertyRegistry.sol` compiled to `src/lib/evm/generated/PropertyRegistry.json`. Calldata encoding, decoding, event topics, and deployment state machine verified via `test-contracts.mjs`. |
+| **The Graph** | **INDEXED** | `subgraph.yaml` and `schema.graphql` define `Token`, `Account`, and `Transfer` entities. `/api/subgraph` executes live in-process GraphQL queries, provides studio deployment metadata, exposes dual MCP tools (`subgraph_read`, `subgraph_write`), and falls back to deterministic indexed account fixtures when offline. |
+| **MCP** | **LIVE** | Model Context Protocol servers implemented in Python for `usps_chainlink`, `subgraph` (read/write), and `superfluid`. JSON-RPC endpoints expose tool definitions (`get_top_holders`, `add_token_source`, `validate_usps_address`, etc.) consumed by Hermes agent. |
+| **liveness** | **LIVE** | Internal liveness sweep worker in `liveness.ts` monitors recurring Selfie Check deadlines; evaluates `OK`, `AT_RISK`, and `EXPIRED` states. Automatic reclaim transfers expired token balances back to treasury via approved allowance and arms Hedera Scheduled Transactions (`ScheduleCreateTransaction`). |
+| **yield claims** | **SIMULATED** | `/api/yield/claim` enforces strict fail-closed security: requires active session authentication, verifies investor property ownership, enforces compliance/liveness checks, and requires `Idempotency-Key` headers (detecting duplicate claims). Fails closed with HTTP 503 `LIVE_SETTLEMENT_UNAVAILABLE` and `amountClaimed: "0"` because no live Base Sepolia fUSDCx transfer signer is configured. |
+| **rent deposits** | **SIMULATED** | `/api/rent/simulate` requires authenticated operator session (`PRISM_OPERATOR_ADDRESSES`); non-operators receive HTTP 403. Computes continuous flow rate (`amount / 2592000`), records event to SQLite audit trail, logs HCS audit with `provenance: "SIMULATED"` and `txId: null`, explicitly marking simulated provenance. |
+
 ## Architecture
 
 Single Next.js 16 app (App Router, TypeScript, Tailwind). No separate backend process.
@@ -172,12 +193,7 @@ isolated development reference, but no production holder route calls it.
 - **Single operator key** backs every token's admin/kyc/freeze/wipe/pause/supply/fee-schedule
   key, and is also the treasury. A production version would generate per-token keys and move
   signing behind an HSM/KMS.
-- **No native request authentication** on the admin/holder API routes (pause, wipe, freeze,
-  whitelist, transfer, distribute, etc.) — anyone who can reach the deployment can call them. The
-  integrated container only binds Next.js to loopback, which stops direct access to port 3000; it
-  does **not** gate these routes behind the Hermes session, since the tokenization app is
-  intentionally public. Session/signature-based authorization on the admin-only endpoints is
-  needed before this holds real value beyond a testnet demo.
+- **Operator Authorization**: Privileged mutation endpoints (such as `/api/rent/simulate`, `/api/tokens/:id/pause`, `/api/tokens/:id/holders/:accountId/whitelist`, and `/api/agent/execute`) require signature-verified active sessions matched against server-side configured operator allowlists (`PRISM_OPERATOR_ADDRESSES`). Unauthenticated requests receive HTTP 401, and unauthorized callers receive HTTP 403. Public read routes remain open for storefront and dashboard exploration.
 - **NFT tokens** can be created (all the same compliance keys apply), but minting individual
   serials / per-serial transfer management isn't built — the workspace UI shows a placeholder
   for non-fungible tokens on the distribute/reclaim panels.

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { contractDeploymentStatus, requireLiveContractDeployments } from "@/lib/evm/contracts";
+import { getAuditTopicId, requireLiveAuditTopic } from "@/lib/hedera/hcsAudit";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,9 @@ function hederaNetwork(): "mainnet" | "testnet" | "previewnet" {
 export function GET() {
   try {
     requireLiveContractDeployments();
+    requireLiveAuditTopic();
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid contract configuration" }, { status: 503 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid runtime configuration" }, { status: 503 });
   }
   return NextResponse.json(
     {
@@ -31,6 +33,8 @@ export function GET() {
         process.env.NEXT_PUBLIC_APP_URL ??
         "",
       contracts: contractDeploymentStatus(),
+      auditTopicConfigured: Boolean(getAuditTopicId()),
+      auditTopicId: getAuditTopicId(),
     },
     {
       headers: {

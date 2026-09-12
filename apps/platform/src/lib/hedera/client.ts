@@ -33,8 +33,10 @@ function init(): void {
     client.setOperator(operatorId, operatorKey);
     globalThis.__hederaOperatorKey = operatorKey;
     globalThis.__hederaOperatorId = operatorId;
+  } else if (idStr) {
+    globalThis.__hederaOperatorId = AccountId.fromString(idStr);
   } else {
-    globalThis.__hederaOperatorId = AccountId.fromString(idStr || "0.0.4491823");
+    globalThis.__hederaOperatorId = undefined;
   }
 
   globalThis.__hederaClient = client;
@@ -55,5 +57,19 @@ export function getOperatorKey(): PrivateKey {
 
 export function getOperatorId(): AccountId {
   if (!globalThis.__hederaOperatorId) init();
-  return globalThis.__hederaOperatorId || AccountId.fromString("0.0.4491823");
+  if (!globalThis.__hederaOperatorId) {
+    throw new Error("HEDERA_OPERATOR_ID is not configured in environment.");
+  }
+  return globalThis.__hederaOperatorId;
+}
+
+export function getOptionalOperatorId(): AccountId | null {
+  if (!globalThis.__hederaOperatorId) init();
+  return globalThis.__hederaOperatorId ?? null;
+}
+
+export function _resetHederaClientForTesting(): void {
+  globalThis.__hederaClient = undefined;
+  globalThis.__hederaOperatorKey = undefined;
+  globalThis.__hederaOperatorId = undefined;
 }

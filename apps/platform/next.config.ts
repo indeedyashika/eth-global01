@@ -6,6 +6,18 @@ if ((process.env.PRISM_CONTRACT_MODE ?? "SIMULATED").toUpperCase() === "LIVE") {
   if (missing.length) {
     throw new Error(`PRISM_CONTRACT_MODE=LIVE requires valid contract addresses: ${missing.join(", ")}`);
   }
+
+  const topicId = process.env.HEDERA_AUDIT_TOPIC_ID?.trim();
+  if (!topicId || !/^\d+\.\d+\.[1-9]\d*$/.test(topicId)) {
+    throw new Error("PRISM_CONTRACT_MODE=LIVE requires a valid HEDERA_AUDIT_TOPIC_ID (e.g. 0.0.xxxxx)");
+  }
+
+  const operatorId = process.env.HEDERA_OPERATOR_ID?.trim();
+  if (operatorId && topicId === operatorId) {
+    throw new Error(
+      `HEDERA_AUDIT_TOPIC_ID (${topicId}) must not be identical to HEDERA_OPERATOR_ID. Operator account and HCS audit topic must be configured separately.`
+    );
+  }
 }
 
 const nextConfig: NextConfig = {

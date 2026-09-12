@@ -1,7 +1,47 @@
-import { Wallet, verifyTypedData } from "ethers";
+import { Wallet } from "ethers";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+
+const platformRoot = fs.existsSync(path.join(process.cwd(), "public"))
+  ? process.cwd()
+  : path.join(process.cwd(), "apps", "platform");
+
+if (!process.env.__TSX_RUNNING__ && !process.execArgv.some((a) => a.includes("tsx"))) {
+  const scriptPath = path.join(platformRoot, "scripts", "test-auth-regression.mjs");
+  const result = spawnSync(
+    "npx",
+    ["tsx", "--tsconfig", path.join(platformRoot, "tsconfig.json"), scriptPath],
+    {
+      stdio: "inherit",
+      env: { ...process.env, __TSX_RUNNING__: "1" },
+      shell: true,
+    }
+  );
+  process.exit(result.status ?? 0);
+}
+
+const { NextRequest } = await import("next/server");
+const sessionRoute = await import(pathToFileURL(path.join(platformRoot, "src", "app", "api", "agent", "session", "route.ts")).href);
+const executeRoute = await import(pathToFileURL(path.join(platformRoot, "src", "app", "api", "agent", "execute", "route.ts")).href);
 
 const PORT = process.env.PORT || "3088";
-const BASE_URL = `http://localhost:${PORT}`;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+let isServerUp = false;
+try {
+  const probe = await fetch(`${BASE_URL}/api/subgraph`, { signal: AbortSignal.timeout(600) });
+  if (probe.status < 500) isServerUp = true;
+} catch (e) {
+  isServerUp = false;
+}
+
+if (isServerUp) {
+  console.log(`[HTTP Mode] Live server detected on ${BASE_URL}. Running over HTTP.`);
+} else {
+  console.log(`[In-Process Mode] No running server detected on ${BASE_URL}. Dispatching directly to Next.js route handlers.`);
+}
 
 const VALIDATOR_CONTRACT_ADDRESS = "0x7579C0de00000000000000000000000000007579";
 const HERMES_AGENT_ADDRESS = "0x89205A3A3b2A69De6Dbf7f01ED13B2108B2c43e7";
@@ -17,22 +57,64 @@ const types = {
   SessionPolicy: [
     { name: "grantor", type: "address" },
     { name: "agent", type: "address" },
-    { name: "maxSpendHbar", type: "uint256" },
-    { name: "maxFlowMonthlyUsd", type: "uint256" },
+    { name: "allowedTargets", type: "address[]" },
+    { name: "allowedSelectors", type: "bytes4[]" },
+    { name: "maxSpend", type: "uint256" },
+    { name: "maxFlow", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
     { name: "validUntil", type: "uint256" },
     { name: "nonce", type: "uint256" },
   ],
 };
 
 async function postJSON(endpoint, body, headers = {}) {
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
+  if (isServerUp) {
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => null);
+    return { status: res.status, data };
+  }
+
+  const url = `${BASE_URL}${endpoint}`;
+  const req = new NextRequest(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
+
+  let res;
+  if (endpoint === "/api/agent/session") {
+    res = await sessionRoute.POST(req);
+  } else if (endpoint === "/api/agent/execute") {
+    res = await executeRoute.POST(req);
+  } else {
+    throw new Error(`Unknown endpoint: ${endpoint}`);
+  }
+
   const data = await res.json().catch(() => null);
   return { status: res.status, data };
 }
+
+const DEFAULT_ALLOWED_TARGETS = [
+  VALIDATOR_CONTRACT_ADDRESS,
+  "0x1111111111111111111111111111111111111111",
+  "0x2222222222222222222222222222222222222222",
+  "0x3333333333333333333333333333333333333333",
+];
+
+const DEFAULT_ALLOWED_SELECTORS = [
+  "0xb4b46617",
+  "0x401826f6",
+  "0x19273c68",
+  "0xd4116492",
+  "0x7a83d73a",
+  "0x90f5c9ef",
+  "0x38ba6156",
+  "0x12345678",
+];
 
 async function runTests() {
   console.log("=== Running Authentication Regression Tests ===");
@@ -57,13 +139,18 @@ async function runTests() {
     };
 
     let signature = overrides.signature;
+    const allowedTargets = overrides.allowedTargets || DEFAULT_ALLOWED_TARGETS;
+    const allowedSelectors = overrides.allowedSelectors || DEFAULT_ALLOWED_SELECTORS;
     if (signature === undefined) {
-      // Ethers bigints to strings
+      const validAfterSec = Math.floor(validAfter / 1000);
       const toSign = {
         grantor: grantor.address,
         agent: policyValue.agent,
-        maxSpendHbar: BigInt(Math.floor(policyValue.maxSpendHbar * 1e18)),
-        maxFlowMonthlyUsd: BigInt(policyValue.maxFlowMonthlyUsd),
+        allowedTargets,
+        allowedSelectors,
+        maxSpend: BigInt(Math.floor(policyValue.maxSpendHbar * 1e18)),
+        maxFlow: BigInt(policyValue.maxFlowMonthlyUsd),
+        validAfter: BigInt(validAfterSec),
         validUntil: BigInt(policyValue.validUntil),
         nonce: BigInt(policyValue.nonce),
       };
@@ -75,11 +162,15 @@ async function runTests() {
       agent: overrides.agent !== undefined ? overrides.agent : HERMES_AGENT_ADDRESS,
       nonce: policyValue.nonce,
       validAfter: validAfter,
+      allowedTargets,
+      allowedSelectors,
       signature: signature,
       constraints: {
         maxSpendHbar: policyValue.maxSpendHbar,
         maxFlowRateMonthlyUsd: policyValue.maxFlowMonthlyUsd,
         durationHours: durationHours,
+        allowedTargets,
+        allowedSelectors,
       }
     };
   }
@@ -114,8 +205,11 @@ async function runTests() {
   const toSignForInvalid = {
     grantor: invalidSigPayload.grantor,
     agent: invalidSigPayload.agent,
-    maxSpendHbar: BigInt(Math.floor(invalidSigPayload.constraints.maxSpendHbar * 1e18)),
-    maxFlowMonthlyUsd: BigInt(invalidSigPayload.constraints.maxFlowRateMonthlyUsd),
+    allowedTargets: DEFAULT_ALLOWED_TARGETS,
+    allowedSelectors: DEFAULT_ALLOWED_SELECTORS,
+    maxSpend: BigInt(Math.floor(invalidSigPayload.constraints.maxSpendHbar * 1e18)),
+    maxFlow: BigInt(invalidSigPayload.constraints.maxFlowRateMonthlyUsd),
+    validAfter: BigInt(Math.floor(invalidSigPayload.validAfter / 1000)),
     validUntil: BigInt(Math.floor((invalidSigPayload.validAfter + invalidSigPayload.constraints.durationHours * 3600000) / 1000)),
     nonce: BigInt(invalidSigPayload.nonce),
   };

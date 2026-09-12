@@ -125,7 +125,8 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
       };
 
       const nonce = Date.now();
-      const validUntil = Math.floor(Date.now() / 1000) + 24 * 3600;
+      const validAfter = Math.floor(Date.now() / 1000);
+      const validUntil = validAfter + 24 * 3600;
 
       const domain = {
         name: "Prism8SessionValidator",
@@ -138,18 +139,42 @@ export function AgenticSafetyCockpit({ onWorkflowComplete }: AgenticSafetyCockpi
         SessionPolicy: [
           { name: "grantor", type: "address" },
           { name: "agent", type: "address" },
-          { name: "maxSpendHbar", type: "uint256" },
-          { name: "maxFlowMonthlyUsd", type: "uint256" },
+          { name: "allowedTargets", type: "address[]" },
+          { name: "allowedSelectors", type: "bytes4[]" },
+          { name: "maxSpend", type: "uint256" },
+          { name: "maxFlow", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
           { name: "validUntil", type: "uint256" },
           { name: "nonce", type: "uint256" },
         ],
       };
 
+      const allowedTargets = [
+        VALIDATOR_MODULE_ADDRESS,
+        "0x1111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222",
+        "0x3333333333333333333333333333333333333333",
+      ];
+
+      const allowedSelectors = [
+        "0xb4b46617",
+        "0x401826f6",
+        "0x19273c68",
+        "0xd4116492",
+        "0x7a83d73a",
+        "0x90f5c9ef",
+        "0x38ba6156",
+        "0x12345678",
+      ];
+
       const value = {
         grantor,
         agent: HERMES_AGENT_ADDRESS,
-        maxSpendHbar: BigInt(5 * 1e18),
-        maxFlowMonthlyUsd: BigInt(5000),
+        allowedTargets,
+        allowedSelectors,
+        maxSpend: BigInt(5 * 1e18),
+        maxFlow: BigInt(5000),
+        validAfter: BigInt(validAfter),
         validUntil: BigInt(validUntil),
         nonce: BigInt(nonce),
       };

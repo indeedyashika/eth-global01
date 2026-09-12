@@ -157,7 +157,7 @@ export const walletIdentifierSchema = z.union([accountIdSchema, evmAddressSchema
 
 export const registerHolderSchema = z.object({
   accountId: walletIdentifierSchema,
-  evmAddress: z.string().trim().optional(),
+  evmAddress: z.union([evmAddressSchema, z.literal("")]).optional(),
 });
 
 export const createTokenRequestSchema = z.object({

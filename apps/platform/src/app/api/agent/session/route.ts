@@ -30,14 +30,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { grantor, signature, constraints, nonce, rawMessage, validAfter, agent } = body as {
+    const { grantor, signature, constraints, nonce, rawMessage, validAfter, validUntil, agent, allowedTargets, allowedSelectors } = body as {
       grantor: string;
       signature: string;
       constraints?: Partial<SessionPolicyConstraints>;
       nonce?: number;
       rawMessage?: string;
       validAfter?: number;
+      validUntil?: number;
       agent?: string;
+      allowedTargets?: string[];
+      allowedSelectors?: string[];
     };
 
     if (!grantor || !signature) {
@@ -65,7 +68,7 @@ export async function POST(req: NextRequest) {
       constraints,
       assignedNonce,
       rawMessage,
-      { validAfter, agent }
+      { validAfter, validUntil, agent, allowedTargets, allowedSelectors }
     );
 
     return NextResponse.json({

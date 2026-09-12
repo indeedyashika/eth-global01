@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { logHcsAuditEvent, type HcsAuditReceipt } from "../hedera/hcsAudit";
+import { logHcsAuditEvent, getAuditTopicId, type HcsAuditReceipt } from "../hedera/hcsAudit";
 import { verifyHederaPaymentTransaction } from "../hedera/mirrorNode";
 
 export type VerificationMode = "LIVE_USPS" | "SIMULATED_USPS";
@@ -65,7 +65,16 @@ export function getInvoice(invoiceId: string): InvoiceRecord | undefined {
 
 export function createX402Invoice(payee?: string, amountTinybars = "50000000"): X402Challenge {
   const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-  const payeeAccount = payee || process.env.HEDERA_OPERATOR_ID || "0.0.4491823";
+  const isLive = (process.env.PRISM_CONTRACT_MODE ?? "SIMULATED").toUpperCase() === "LIVE";
+  const configuredOperator = process.env.HEDERA_OPERATOR_ID?.trim();
+
+  if (isLive && !payee && !configuredOperator) {
+    throw new Error("LIVE mode requires a configured HEDERA_OPERATOR_ID or explicit payee for x402 invoice creation.");
+  }
+
+  const payeeAccount = payee || configuredOperator || "0.0.0";
+  const auditTopicId = getAuditTopicId() ?? "";
+
   getActiveInvoices().set(invoiceId, {
     invoiceId,
     amountTinybars,
@@ -87,7 +96,7 @@ export function createX402Invoice(payee?: string, amountTinybars = "50000000"): 
     displayAmount: "0.5 HBAR",
     token: "0.0.0",
     invoiceId,
-    auditTopicId: process.env.HEDERA_AUDIT_TOPIC_ID || "0.0.4491823",
+    auditTopicId,
     instructions:
       "Submit 0.5 HBAR payment to payee on Hedera Testnet with invoiceId in transaction memo, then retry with X-Payment-Tx and X-Payment-Invoice headers.",
   };
@@ -463,7 +472,7 @@ export async function handlePropertyOracleRequest(
         displayAmount: invoice.displayAmount,
         token: "0.0.0",
         invoiceId: invoice.invoiceId,
-        auditTopicId: process.env.HEDERA_AUDIT_TOPIC_ID || "0.0.4491823",
+        auditTopicId: getAuditTopicId() ?? "",
         instructions:
           "Submit 0.5 HBAR payment to payee on Hedera Testnet with invoiceId in transaction memo, then retry with X-Payment-Tx and X-Payment-Invoice headers.",
       },
