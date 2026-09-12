@@ -330,6 +330,9 @@ export function recordStep2RentDeposit(data: {
   if (current.step1.status !== "SUCCESS") {
     throw new Error("Step 1 Oracle Verification is required before depositing rent.");
   }
+  if (data.rentAmount !== 5000) {
+    throw new Error(`Canonical judge flow rent deposit amount must be exactly $5,000. Received: $${data.rentAmount}`);
+  }
 
   const db = getDb();
   const now = new Date().toISOString();

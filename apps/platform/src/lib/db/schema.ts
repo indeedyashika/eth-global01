@@ -248,4 +248,25 @@ CREATE INDEX IF NOT EXISTS idx_world_id_verifications_holder
   ON world_id_verifications(token_id, account_id, check_kind, id DESC);
 CREATE INDEX IF NOT EXISTS idx_oracle_verifications_property
   ON oracle_verifications(property_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS rent_deposits (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id                 TEXT NOT NULL,
+  vault_address               TEXT NOT NULL,
+  depositor_address           TEXT NOT NULL,
+  amount_usd                  REAL NOT NULL DEFAULT 5000,
+  amount_wei                  TEXT NOT NULL,
+  flow_rate_per_sec           REAL NOT NULL,
+  tx_hash                     TEXT NOT NULL UNIQUE,
+  network                     TEXT NOT NULL DEFAULT 'Base Sepolia',
+  chain_id                    INTEGER NOT NULL DEFAULT 84532,
+  block_number                INTEGER,
+  hcs_topic_id                TEXT,
+  hcs_sequence_number         INTEGER,
+  status                      TEXT NOT NULL DEFAULT 'CONFIRMED',
+  provenance                  TEXT NOT NULL DEFAULT 'LIVE_ONCHAIN',
+  created_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_rent_deposits_property ON rent_deposits(property_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rent_deposits_tx ON rent_deposits(tx_hash);
 `;

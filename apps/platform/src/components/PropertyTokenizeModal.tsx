@@ -24,7 +24,7 @@ export function PropertyTokenizeModal({
   const [city, setCity] = useState("Miami");
   const [state, setState] = useState("FL");
   const [zip, setZip] = useState("33101");
-  const [monthlyRent, setMonthlyRent] = useState(3800);
+  const [monthlyRent, setMonthlyRent] = useState(5000);
   const [shares, setShares] = useState(1000);
   const [network, setNetwork] = useState<"EVM" | "HEDERA">("EVM");
 

@@ -52,7 +52,7 @@ export default function TokenWorkspace({
     ? Number(rentMatch[1].replace(/,/g, ""))
     : Number(token.initialSupply) >= 5000
     ? 8200
-    : 3800;
+    : 5000;
 
   const [monthlyRent, setMonthlyRent] = useState<number>(initialRent);
   const [depositAmount, setDepositAmount] = useState<number>(monthlyRent);
@@ -481,11 +481,11 @@ export default function TokenWorkspace({
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(Number(e.target.value))}
                     className="w-full bg-neutral-50 border border-neutral-300 pl-7 pr-3 py-2 text-xs font-mono text-black focus:border-black focus:outline-none"
-                    placeholder="3800"
+                    placeholder="5000"
                   />
                 </div>
                 <div className="flex gap-2">
-                  {[2500, 3800, 5200, 10000].map((amt) => (
+                  {[2500, 5000, 7500, 10000].map((amt) => (
                     <button
                       key={amt}
                       type="button"

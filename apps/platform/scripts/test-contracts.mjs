@@ -62,7 +62,7 @@ async function runTests() {
   const testPropertyId = ethers.keccak256(ethers.toUtf8Bytes("fixture_456_oak_ave_miami_fl"));
   const testAddressHash = ethers.keccak256(ethers.toUtf8Bytes("456 OAK AVE|MIAMI|FL|33101"));
   const testHederaTokenId = "0.0.4491823"; // Legitimate test fixture
-  const testMonthlyRent = ethers.parseUnits("3800", 18);
+  const testMonthlyRent = ethers.parseUnits("5000", 18);
 
   // Behavioral: Encode and decode registerProperty call
   const isSlashable = true;
@@ -151,23 +151,23 @@ async function runTests() {
     return monthlyInvestorPortion / 2592000n; // 30 days * 86,400 sec/day
   }
 
-  // Test Case A: $3,800 / month, 10% investor share (1000 bps)
-  const rent3800 = ethers.parseUnits("3800", 18);
-  const flowRate10Pct = computeExpectedFlowRate(rent3800, 1000);
-  assert.strictEqual(flowRate10Pct, 146604938271604n, "10% share of $3,800/mo must equal 146604938271604 wei/sec");
+  // Test Case A: $5,000 / month, 10% investor share (1000 bps)
+  const rent5000 = ethers.parseUnits("5000", 18);
+  const flowRate10Pct = computeExpectedFlowRate(rent5000, 1000);
+  assert.strictEqual(flowRate10Pct, 192901234567901n, "10% share of $5,000/mo must equal 192901234567901 wei/sec");
 
-  // Test Case B: $3,800 / month, 100% investor share (10,000 bps)
-  const flowRate100Pct = computeExpectedFlowRate(rent3800, 10000);
-  assert.strictEqual(flowRate100Pct, 1466049382716049n, "100% share of $3,800/mo must equal 1466049382716049 wei/sec");
+  // Test Case B: $5,000 / month, 100% investor share (10,000 bps)
+  const flowRate100Pct = computeExpectedFlowRate(rent5000, 10000);
+  assert.strictEqual(flowRate100Pct, 1929012345679012n, "100% share of $5,000/mo must equal 1929012345679012 wei/sec");
 
-  // Test Case C: $3,800 / month, 0% investor share (0 bps)
-  const flowRate0Pct = computeExpectedFlowRate(rent3800, 0);
+  // Test Case C: $5,000 / month, 0% investor share (0 bps)
+  const flowRate0Pct = computeExpectedFlowRate(rent5000, 0);
   assert.strictEqual(flowRate0Pct, 0n, "0% share of rent must equal 0 wei/sec");
 
   // Behavioral: Encode and decode calculateFlowRate
-  const flowRateCalldata = vaultInterface.encodeFunctionData("calculateFlowRate", [rent3800, 1000]);
+  const flowRateCalldata = vaultInterface.encodeFunctionData("calculateFlowRate", [rent5000, 1000]);
   const decodedFlowRate = vaultInterface.decodeFunctionData("calculateFlowRate", flowRateCalldata);
-  assert.strictEqual(decodedFlowRate.monthlyRentUsd, rent3800);
+  assert.strictEqual(decodedFlowRate.monthlyRentUsd, rent5000);
   assert.strictEqual(Number(decodedFlowRate.shareBasisPoints), 1000);
 
   // Behavioral: Encode and decode createInvestorStream
@@ -183,10 +183,10 @@ async function runTests() {
   assert.strictEqual(decodedStream.flowRate, flowRate10Pct);
 
   // Behavioral: Encode and decode depositRent
-  const depositCalldata = vaultInterface.encodeFunctionData("depositRent", [testPropertyId, rent3800]);
+  const depositCalldata = vaultInterface.encodeFunctionData("depositRent", [testPropertyId, rent5000]);
   const decodedDeposit = vaultInterface.decodeFunctionData("depositRent", depositCalldata);
   assert.strictEqual(decodedDeposit.propertyId, testPropertyId);
-  assert.strictEqual(decodedDeposit.amount, rent3800);
+  assert.strictEqual(decodedDeposit.amount, rent5000);
 
   // Behavioral: Encode and decode emergencyFreezeAll
   const freezeCalldata = vaultInterface.encodeFunctionData("emergencyFreezeAll", [testPropertyId]);

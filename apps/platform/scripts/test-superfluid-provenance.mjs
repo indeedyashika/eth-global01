@@ -229,7 +229,7 @@ async function runTests() {
       city: "Miami",
       state: "FL",
       zip: "33101",
-      monthlyRent: 3800,
+      monthlyRent: 5000,
       shares: 1000,
     },
   });
@@ -277,7 +277,7 @@ async function runTests() {
   const rentRes = await postJSON("/api/rent/simulate", {
     // Legitimate fixture value used only by tests
     propertyId: "0.0.4491823",
-    rentAmountUsd: 3800,
+    rentAmountUsd: 5000,
   });
   assert.strictEqual(rentRes.status, 401, "Unauthenticated rent simulation must be rejected");
   assert(rentRes.data?.error, "Unauthenticated rent simulation must return error message");

@@ -320,7 +320,7 @@ async function runFinalSecurityRegressionPass() {
 
   // 2.1 Unauthorized API mutation (unauthenticated rent simulation)
   try {
-    const res = await postJSON("/api/rent/simulate", { propertyId: "0.0.4491823", amount: 3800 });
+    const res = await postJSON("/api/rent/simulate", { propertyId: "0.0.4491823", amount: 5000 });
     assert.strictEqual(res.status, 401, "Unauthenticated mutation must return HTTP 401");
     recordPass("Unauthorized API mutation rejected (401)");
   } catch (err) {
@@ -344,7 +344,7 @@ async function runFinalSecurityRegressionPass() {
     );
     const res = await postJSON(
       "/api/rent/simulate",
-      { propertyId: "0.0.4491823", amount: 3800 },
+      { propertyId: "0.0.4491823", amount: 5000 },
       { authorization: `Bearer ${sessionNonOp.sessionId}` }
     );
     assert.strictEqual(res.status, 403, "Non-operator admin mutation must return HTTP 403");
@@ -543,7 +543,7 @@ async function runFinalSecurityRegressionPass() {
   try {
     const res = await postJSON("/api/rent/simulate", {
       propertyId: "0.0.4491823",
-      amount: 3800,
+      amount: 5000,
       txId: "0.0.4491823@1789000000.000000000",
     });
     assert.strictEqual(res.status, 401, "Unauthenticated rent deposit must return 401");
@@ -675,7 +675,7 @@ async function runFinalSecurityRegressionPass() {
     );
     const rentRes = await postJSON(
       "/api/rent/simulate",
-      { propertyId: "0.0.4491823", amount: 3800 },
+      { propertyId: "0.0.4491823", amount: 5000 },
       { authorization: `Bearer ${opSession.sessionId}` }
     );
     assert.strictEqual(rentRes.status, 503, "Unconfigured YieldVault must return HTTP 503");

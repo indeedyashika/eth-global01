@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         city: "Miami",
         state: "FL",
         zip: "33101",
-        monthlyRent: 3800,
+        monthlyRent: 5000,
         shares: 1000,
       },
       simulateMalicious = false,

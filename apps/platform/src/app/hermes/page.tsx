@@ -90,13 +90,13 @@ export default function HermesConsolePage() {
           `Top shareholder is ${holders[0]?.address} with ${holders[0]?.sharePercentage} equity. Proportional rental yield: $${holders[0]?.monthlyYieldUsd?.toFixed(2)}/mo.`
         );
       } else if (cmd.toLowerCase().includes("rent") || cmd.toLowerCase().includes("deposit") || cmd.toLowerCase().includes("yield")) {
-        addLog("HERMES", "Executing rent inflow injection into Base Sepolia YieldVault.sol ($3,800 USD)...");
+        addLog("HERMES", "Executing rent inflow injection into Base Sepolia YieldVault.sol ($5,000 USD)...");
         const res = await fetch("/api/rent/simulate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             propertyId: "prop_456_oak_ave",
-            amount: 3800,
+            amount: 5000,
             tenantName: "Acme Residential Tenant Corp",
           }),
         });
