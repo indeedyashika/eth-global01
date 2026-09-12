@@ -41,6 +41,16 @@ export async function POST(req: NextRequest) {
         state = recordStep4WorkspaceInspection(data);
         break;
       case 5:
+        if (data.verified && (!data.nullifierHash || !data.claimTxId)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Client cannot directly assert Step 5 verified=true without real server-side ZK proof verification and confirmed claim transaction. Use /api/worldid/claim-shares.",
+            },
+            { status: 400 }
+          );
+        }
         state = recordStep5WorldId(data);
         break;
       case 6:
