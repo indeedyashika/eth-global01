@@ -78,12 +78,15 @@ export interface AuthoritativeYieldState {
   missingStateError: string | null;
 }
 
+import { getAuthoritativeHcsLedger, type AuthoritativeHcsLedger } from "../hedera/hcsLedgerService";
+
 export interface AuthoritativeWorkspaceData {
   property: AuthoritativePropertyState;
   token: AuthoritativeTokenState;
   rent: AuthoritativeRentState;
   stream: AuthoritativeStreamState;
   yield: AuthoritativeYieldState;
+  consensusLedger?: AuthoritativeHcsLedger;
   workflowStep: number;
   isReadyForInspection: boolean;
   inspectedAt: string | null;
@@ -343,6 +346,10 @@ export function getAuthoritativeWorkspaceData(identifier: string = "prop_456_oak
     rent: rentState,
     stream: streamState,
     yield: yieldState,
+    consensusLedger: getAuthoritativeHcsLedger({
+      propertyId: canonicalPropertyId,
+      tokenId: canonicalPropertyId,
+    }),
     workflowStep: workflow.currentStep,
     isReadyForInspection,
     inspectedAt: workflow.step4.inspectedAt,

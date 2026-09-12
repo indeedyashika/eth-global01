@@ -56,6 +56,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ tokenId
       holders,
       events,
       capTable,
+      consensusLedger: authData.consensusLedger,
       authoritativeWorkspace: authData,
     });
   });

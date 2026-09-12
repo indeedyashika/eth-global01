@@ -862,7 +862,11 @@ export default function TokenWorkspace({
         {activeTab === "ledger" && (
           <div className="border border-neutral-300 bg-white p-6 space-y-4">
             <h3 className="text-base font-bold text-black">Immutable Consensus Ledger</h3>
-            <EventLog events={events} />
+            <EventLog
+              events={events}
+              tokenId={token.id}
+              initialLedger={authoritativeWorkspace?.consensusLedger}
+            />
           </div>
         )}
       </div>

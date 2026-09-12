@@ -547,17 +547,23 @@ export async function verifyWorldIdProofAndClaimShares(
     txId: txHash,
   });
 
-  // Hedera HCS Audit Log
+  // Hedera HCS Audit Log: Anchor verified allocation to immutable consensus
   let hcsSequenceNumber: number | null = null;
   try {
     const hcsReceipt = await logHcsAuditEvent({
       event: "INVESTOR_WORLD_ID_VERIFIED",
-      propertyId: canonicalTokenId,
+      propertyId: "prop_456_oak_ave",
+      actor: checksummedInvestor,
+      token: "OAK-RWA",
+      network: "Base Sepolia",
       txId: txHash,
+      txLink: `https://sepolia.basescan.org/tx/${txHash}`,
+      memo: `World ID verified fractional share allocation (${sharesToAllocate} shares)`,
       metadata: {
         investor: checksummedInvestor,
         sharesClaimed: sharesToAllocate,
         nullifierHash,
+        credential: verifiedCredential,
         blockNumber,
       },
     });

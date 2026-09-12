@@ -49,10 +49,16 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
     hcsSequenceNumber: number | null;
   } | null>(null);
 
-  // Step 6 Cap table active tab
+  // Step 6 Cap table & Consensus Ledger active tab
   const [step6Tab, setStep6Tab] = useState<"captable" | "ledger">("captable");
   const [isConfirmingStep6, setIsConfirmingStep6] = useState(false);
   const [capTable, setCapTable] = useState<any | null>(null);
+  const [hcsLedger, setHcsLedger] = useState<{
+    topicId: string | null;
+    records: any[];
+    totalCount: number;
+    configured: boolean;
+  } | null>(null);
 
   const fetchCapTable = async () => {
     try {
@@ -60,9 +66,24 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
       const data = await res.json();
       if (data.success && data.capTable) {
         setCapTable(data.capTable);
+        if (data.capTable.consensusLedger) {
+          setHcsLedger(data.capTable.consensusLedger);
+        }
       }
     } catch (e) {
       console.warn("[fetchCapTable] Error:", e);
+    }
+  };
+
+  const fetchLedger = async () => {
+    try {
+      const res = await fetch("/api/tokens/prop_456_oak_ave/ledger");
+      const data = await res.json();
+      if (data.success) {
+        setHcsLedger(data);
+      }
+    } catch (e) {
+      console.warn("[fetchLedger] Error:", e);
     }
   };
 
@@ -94,6 +115,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
   useEffect(() => {
     fetchWorkflow();
     fetchCapTable();
+    fetchLedger();
   }, []);
 
   const handleResetWorkflow = async () => {
@@ -320,6 +342,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
         await fetchWorkflow();
       }
       await fetchCapTable();
+      await fetchLedger();
     } catch (e: any) {
       setWorldIdStage("IDLE");
       setWorldIdError(e.message || "Failed to verify World ID proof and claim shares");
@@ -341,7 +364,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
           step: 6,
           data: {
             holderCount: capTable?.holders?.length ?? 2,
-            consensusSeqCount: capTable?.hcsSequenceCount ?? 4,
+            consensusSeqCount: hcsLedger?.totalCount ?? capTable?.hcsSequenceCount ?? 0,
             success: true,
           },
         }),
@@ -350,6 +373,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
       if (data.success) {
         setWorkflow(data.state);
         await fetchCapTable();
+        await fetchLedger();
       }
     } catch (e) {
       console.error("Step 6 confirm error:", e);
@@ -1187,51 +1211,127 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                     </table>
                   </div>
                 );
-              })() : (
-                <div className="space-y-2 text-xs">
-                  <div className="text-[11px] text-neutral-600 mb-2">
-                    Topic ID: <span className="font-mono text-black font-bold">0.0.5698421</span> (Hedera Testnet)
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      {
-                        seq: workflow?.step1.hcsSequenceNumber || 1,
-                        type: "X402_PAYMENT_VERIFIED",
-                        memo: "Physical validation 456 Oak Avenue (0.5 HBAR micropayment settled)",
-                      },
-                      {
-                        seq: workflow?.step2.hcsSequenceNumber || 2,
-                        type: "TENANT_RENT_DEPOSITED",
-                        memo: "$5,000 USD rent inflow deposited into YieldVault",
-                      },
-                      {
-                        seq: workflow?.step3.hcsSequenceNumber || 3,
-                        type: "YIELD_CLAIM_SETTLED",
-                        memo: "Superfluid CFA per-second stream claim confirmed",
-                      },
-                      {
-                        seq: 4,
-                        type: "WORLD_ID_PROOF_VERIFIED",
-                        memo: "Fractional 100 share claim allocation anchored to consensus",
-                      },
-                    ].map((entry) => (
-                      <div
-                        key={entry.seq}
-                        className="p-2.5 border border-neutral-200 bg-neutral-50 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-[10px] font-bold px-2 py-0.5 bg-neutral-200 border border-neutral-300">
-                            Seq #{entry.seq}
-                          </span>
-                          <span className="font-bold text-black">{entry.type}</span>
-                          <span className="text-neutral-600 text-[11px] hidden sm:inline">{entry.memo}</span>
-                        </div>
-                        <span className="text-[10px] text-neutral-500 font-mono">Consensus Verified</span>
+              })() : (() => {
+                const records = hcsLedger?.records && hcsLedger.records.length > 0
+                  ? hcsLedger.records
+                  : capTable?.consensusLedger?.records && capTable.consensusLedger.records.length > 0
+                  ? capTable.consensusLedger.records
+                  : [];
+                const topicId = hcsLedger?.topicId || capTable?.consensusLedger?.topicId || "HEDERA_AUDIT_TOPIC_ID";
+
+                return (
+                  <div className="space-y-3 text-xs">
+                    {/* Header metrics */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-neutral-100 border border-neutral-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">HCS Audit Topic:</span>
+                        <span className="font-mono text-xs font-bold text-black bg-white px-2 py-0.5 border border-neutral-300">
+                          {topicId}
+                        </span>
+                        <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
+                          Hedera Testnet
+                        </span>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-3 font-mono text-[11px]">
+                        <span className="text-neutral-600">Attested Messages: <strong className="text-black">{records.length}</strong></span>
+                        <span className="px-2 py-0.5 bg-black text-white text-[10px] font-bold tracking-wider">
+                          LIVE_HCS_ATTESTED
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Records Table or Empty State */}
+                    {records.length === 0 ? (
+                      <div className="p-8 text-center bg-neutral-50 border border-neutral-200 space-y-2">
+                        <span className="text-lg block">📜</span>
+                        <p className="font-bold text-black">No Attested HCS Records Yet</p>
+                        <p className="text-neutral-500 text-xs max-w-lg mx-auto">
+                          Consensus records are never fabricated. Every verified protocol action (USPS DPV oracle verification, $5,000 rent deposit, World ID share claim) submits an on-chain message to Hedera Consensus Service and populates this ledger with its authentic sequence number and consensus timestamp.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="border border-neutral-200 overflow-x-auto">
+                        <table className="w-full text-left min-w-[980px]">
+                          <thead className="bg-neutral-100 border-b border-neutral-200 text-neutral-600 uppercase text-[10px]">
+                            <tr>
+                              <th className="p-2.5">Seq #</th>
+                              <th className="p-2.5">Event Type</th>
+                              <th className="p-2.5">Consensus Timestamp</th>
+                              <th className="p-2.5">Transaction ID</th>
+                              <th className="p-2.5">Topic ID</th>
+                              <th className="p-2.5">Property ID</th>
+                              <th className="p-2.5">Actor</th>
+                              <th className="p-2.5">Token</th>
+                              <th className="p-2.5">Network</th>
+                              <th className="p-2.5">Explorer</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-200 text-black">
+                            {records.map((rec: any) => (
+                              <tr key={`${rec.topicId}-${rec.sequenceNumber}`} className="hover:bg-neutral-50 font-mono text-[11px]">
+                                <td className="p-2.5 font-bold">
+                                  <span className="px-2 py-0.5 bg-black text-white font-bold text-[10px]">
+                                    #{rec.sequenceNumber}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 font-sans font-bold text-black">
+                                  <span className="px-1.5 py-0.5 bg-neutral-200 border border-neutral-300 rounded text-[10px]">
+                                    {rec.type}
+                                  </span>
+                                  {rec.memo && (
+                                    <div className="text-[10px] text-neutral-500 font-normal font-mono truncate max-w-xs mt-0.5">
+                                      {rec.memo}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-2.5 text-[10px] text-neutral-700 whitespace-nowrap">
+                                  {rec.consensusTimestamp ? new Date(rec.consensusTimestamp).toISOString() : "—"}
+                                </td>
+                                <td className="p-2.5 text-[10px] text-neutral-600">
+                                  {rec.txId ? (
+                                    rec.txId.length > 24 ? `${rec.txId.slice(0, 12)}...${rec.txId.slice(-8)}` : rec.txId
+                                  ) : "—"}
+                                </td>
+                                <td className="p-2.5 text-[10px] text-neutral-700">{rec.topicId}</td>
+                                <td className="p-2.5 text-[10px] text-neutral-600">
+                                  {rec.propertyId && rec.propertyId.length > 18
+                                    ? `${rec.propertyId.slice(0, 8)}...${rec.propertyId.slice(-6)}`
+                                    : rec.propertyId || "prop_456_oak_ave"}
+                                </td>
+                                <td className="p-2.5 text-[10px] text-neutral-700">
+                                  {rec.actor ? (
+                                    rec.actor.length > 16 ? `${rec.actor.slice(0, 6)}...${rec.actor.slice(-4)}` : rec.actor
+                                  ) : "—"}
+                                </td>
+                                <td className="p-2.5 text-[10px] font-bold text-black">{rec.token || "OAK-RWA"}</td>
+                                <td className="p-2.5 text-[10px] whitespace-nowrap">
+                                  <span className="px-1.5 py-0.5 bg-neutral-100 border border-neutral-300 text-neutral-700 rounded">
+                                    {rec.network || "Hedera"}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-[10px]">
+                                  {rec.txLink ? (
+                                    <a
+                                      href={rec.txLink}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-black underline font-bold hover:text-neutral-600"
+                                    >
+                                      Receipt ↗
+                                    </a>
+                                  ) : (
+                                    <span className="text-neutral-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="flex items-center justify-between pt-2 border-t border-neutral-200">
                 <span className="text-xs text-neutral-600">

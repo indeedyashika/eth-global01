@@ -523,9 +523,13 @@ export async function handlePropertyOracleRequest(
         event: "X402_PROPERTY_DPV_VERIFIED",
         propertyId: addressHash,
         addressHash,
+        actor: proof.invoiceId,
+        token: "OAK-RWA",
+        network: "Hedera Testnet",
         txId: effectivePaymentTxId || undefined,
         payer: proof.invoiceId,
         amount: "0.5 HBAR",
+        memo: "USPS DPV physical deliverability confirmed (0.5 HBAR micropayment)",
         metadata: {
           standardizedAddress,
           dpvConfirmation: "Y",

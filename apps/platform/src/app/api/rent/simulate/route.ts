@@ -280,8 +280,13 @@ export async function POST(req: NextRequest) {
     const hcsReceipt = await logHcsAuditEvent({
       event: "TENANT_RENT_DEPOSITED",
       propertyId: authoritativePropertyId,
+      actor: depositorAddress,
+      token: "OAK-RWA",
+      network: "Base Sepolia",
       amount: "$5,000 USD",
       txId: txHash,
+      txLink: explorerUrl,
+      memo: "$5,000 USD monthly rent inflow deposited into YieldVault",
       metadata: {
         tenant: tenantName,
         monthlyRate: 5000,

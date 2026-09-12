@@ -52,6 +52,7 @@ function openDb(): Database.Database {
   migrateHolderLivenessState(db);
   migrateWorldIdVerificationQueue(db);
   migrateJudgeWorkflowState(db);
+  migrateHcsAuditRecords(db);
   seedDatabase(db);
 
   return db;
@@ -214,6 +215,31 @@ function migrateJudgeWorkflowState(db: Database.Database): void {
   for (const [name, definition] of additions) {
     if (!columns.has(name)) db.exec(`ALTER TABLE judge_workflow_state ADD COLUMN ${name} ${definition}`);
   }
+}
+
+function migrateHcsAuditRecords(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hcs_audit_records (
+      id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_id                    TEXT NOT NULL,
+      sequence_number             INTEGER NOT NULL,
+      consensus_timestamp         TEXT NOT NULL,
+      tx_id                       TEXT NOT NULL,
+      event_type                  TEXT NOT NULL,
+      property_id                 TEXT NOT NULL,
+      actor                       TEXT NOT NULL,
+      token_id                    TEXT NOT NULL,
+      network                     TEXT NOT NULL,
+      tx_link                     TEXT NOT NULL,
+      memo                        TEXT,
+      metadata_json               TEXT,
+      created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(topic_id, sequence_number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hcs_audit_records_topic_seq ON hcs_audit_records(topic_id, sequence_number DESC);
+    CREATE INDEX IF NOT EXISTS idx_hcs_audit_records_property ON hcs_audit_records(property_id, sequence_number ASC);
+    CREATE INDEX IF NOT EXISTS idx_hcs_audit_records_token ON hcs_audit_records(token_id, sequence_number ASC);
+  `);
 }
 
 // Cache the connection on `globalThis` so Next.js dev-mode module reloads (and route handler

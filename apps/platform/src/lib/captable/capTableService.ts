@@ -4,6 +4,7 @@ import { getWorkflowState } from "@/lib/workflow/judgeWorkflow";
 import { getEvmTokenBalance } from "@/lib/evm/client";
 import { getTokenBalanceBaseUnits } from "@/lib/hedera/tokenService";
 import { isAddress, getAddress, JsonRpcProvider, Contract } from "ethers";
+import { getAuthoritativeHcsLedger } from "@/lib/hedera/hcsLedgerService";
 import type { HolderRecord, TokenRecord } from "@/types";
 
 export interface CapTableHolder {
@@ -36,6 +37,11 @@ export interface AuthoritativeCapTable {
   depositedRentUsd: number;
   holders: CapTableHolder[];
   hcsSequenceCount: number;
+  consensusLedger?: {
+    topicId: string | null;
+    records: any[];
+    totalCount: number;
+  };
   updatedAt: string;
 }
 
@@ -387,16 +393,12 @@ export async function getAuthoritativeCapTable(tokenId: string = "prop_456_oak_a
 
   const holders = [treasuryHolder, ...investorHolders];
 
-  // 6. Consensus Ledger sequence count
-  let hcsSequenceCount = 4;
-  try {
-    const seqRow = db
-      .prepare("SELECT COUNT(*) as count FROM events WHERE (token_id = ? OR token_id = ?) AND provenance = 'LIVE_ONCHAIN'")
-      .get(token.id, "prop_456_oak_ave") as { count?: number } | undefined;
-    if (seqRow?.count && seqRow.count > 0) {
-      hcsSequenceCount = Math.max(4, seqRow.count);
-    }
-  } catch {}
+  // 6. Consensus Ledger sequence count from authoritative HCS records
+  const ledger = getAuthoritativeHcsLedger({
+    tokenId: token.id,
+    propertyId: "prop_456_oak_ave",
+  });
+  const hcsSequenceCount = ledger.totalCount;
 
   return {
     tokenId: token.id,
@@ -410,6 +412,11 @@ export async function getAuthoritativeCapTable(tokenId: string = "prop_456_oak_a
     depositedRentUsd,
     holders,
     hcsSequenceCount,
+    consensusLedger: {
+      topicId: ledger.topicId,
+      records: ledger.records,
+      totalCount: ledger.totalCount,
+    },
     updatedAt: new Date().toISOString(),
   };
 }
