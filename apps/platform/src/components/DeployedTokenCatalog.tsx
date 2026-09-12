@@ -186,11 +186,11 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
         body: JSON.stringify({
           step: 4,
           data: {
-            tokenId: "prop_456_oak_ave",
+            tokenId: workflow?.step1.propertyId || "prop_456_oak_ave",
             tokenSymbol: "OAK-RWA",
             tokenNetwork: "Base Sepolia",
             tokenTotalSupply: "1,000",
-            propertyAddress: "456 Oak Avenue, Miami FL 33101",
+            propertyAddress: workflow?.step1.propertyAddress || "456 Oak Avenue, Miami FL 33101",
             success: true,
           },
         }),
@@ -705,7 +705,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
             </div>
             <div className="flex items-center gap-2">
               <Link
-                href="/tokens/prop_456_oak_ave"
+                href={`/tokens/${workflow?.step1.propertyId || "prop_456_oak_ave"}`}
                 className="px-3.5 py-1.5 bg-white border border-neutral-300 text-black hover:bg-neutral-100 text-xs font-semibold transition"
               >
                 Open Full Dedicated Page ↗
